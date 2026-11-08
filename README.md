@@ -19,7 +19,9 @@ Someone with this same model can follow this repository and reach the result thi
 | Delete AirPlay, including after a boot brings the preload back | Met. `removed.txt` and `python3 scripts/tv_debloat.py remove`. The Apple web app is not a preload. `com.samsung.tv.airplay-app` is, so a later boot may copy that package back. Run `remove` again when `check` shows it. |
 | Install OmarchyTV as a normal app | Met. App id `OmarchyTV0.OmarchyTV`. Signing uses a Samsung certificate for that TV's own DUID. The certificate is not in this repository. |
 | Boot into OmarchyTV and skip the Samsung page | Partial. `db/first_screen/type` is `OmarchyTV0.OmarchyTV`. The tile page `com.samsung.tv.csfs` is deactivated. Firmware still rewrites `db/appfw/booting_appid_backup` to `org.tizen.tv-viewer`, so the picture still appears. The sideloaded widget is not in the Apps grid. |
-| Exit and Return land on the OmarchyTV dock without restarting the process | Exit from the live picture is met on this set. [scripts/session/omarchy-exit-hook.sh](scripts/session/omarchy-exit-hook.sh) raises the same pid to workspace 0. Return and Back do that while OmarchyTV itself is in front. Source the hook after every power-on. |
+| Exit and Return land on the OmarchyTV dock without restarting the process | Exit from the live picture raises the same pid to workspace 0. [scripts/session/omarchy-exit-hook.sh](scripts/session/omarchy-exit-hook.sh) follows the scenario log, because Samsung TV Plus stays `STATUS_BG` while its channel is on screen. Return and Back do that while OmarchyTV itself is in front. Source the hook after every power-on. |
+| The Samsung TV Plus button returns to OmarchyTV | The button opens `org.tizen.epg` and leaves it there. The same hook raises once for that guide, then waits until the visit ends. Power-on, power-off, and the Exit picture path are unchanged. A guide visit that continues into the picture does not launch a second time. |
+| The dock uses the upstream OmarchyTV tiles for Netflix, Spotify, and Prime Video | The Tizen build was replacing those tiles with Samsung store icons. The dock is the three upstream wordmark tiles, in that order. Disney+, Plex, YouTube, and the other upstream tiles stay in the source list and are not on this dock. |
 | Home from Netflix opens the OmarchyTV dock | Open. The physical Home key is Linux code 63 and the platform consumes it. The change is a root edit of `module.keyrouter.cfg` while someone is at the TV. |
 | Source opens OmarchyTV page 2 | Open. Page 2 is workspace index 1, the TV and HDMI page. The remote Source key is not mapped. The Inputs icon inside the app already switches to that workspace. |
 | Bluetooth, Internet, network and Wi-Fi, and Volume on the top right | Met on this set, and in `patches/omarchytv-un43.patch`. The four screens are `org.tizen.btaudiolist`, `com.samsung.tv.knox-browser` (the app labeled Internet), `org.tizen.NetworkSetting-Tizen` (network and Wi-Fi), and `org.tizen.volume-setting`. |
@@ -164,6 +166,14 @@ A package that is already gone makes `pkgcmd -u` print an error and does not com
 
 The PC in this lab also runs `~/.config/bash_custom/scripts/telemetry-probe.sh` once a day. That script calls this check and records the lines. A TV that is off does not fail the PC job.
 
+A boot can list the deactivated ids and the AirPlay preload again. `settle` is the command that puts them back without a Remote PC click. It reads the app list as the developer user. A TV that is off exits 0. A list that is already clean does not run `pkgcmd`. An id that came back is deactivated, or uninstalled when it is in `removed.txt`, and then the same check runs. `org.tizen.tv-viewer` is refused. It is the picture.
+
+```bash
+python3 scripts/tv_debloat.py settle
+```
+
+On this PC that command is `~/.config/bash_custom/scripts/tv-debloat-settle.sh`, started by the user timer `tv-debloat-settle.timer` about every 5 minutes while the PC is on. The TV does not keep its own copy of the job across power-off.
+
 ## Repeat a deactivate
 
 Do this only while you are at the TV. One click. Deactivate is still a root action.
@@ -207,7 +217,7 @@ This set has emitted two SMB share listings for one click, about six seconds apa
 packages.txt                 ids to deactivate, including coba.adagent
 removed.txt                  AirPlay ids to uninstall
 kept.txt                     Home and the other screens that must stay listed
-scripts/tv_debloat.py        check, deactivate, and remove
+scripts/tv_debloat.py        check, deactivate, remove, and settle
 scripts/supervise.py         terminal gate for an unattended session
 scripts/session/watch-login.sh
 scripts/session/arm-click.sh

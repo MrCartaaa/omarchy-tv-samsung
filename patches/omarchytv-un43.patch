@@ -5,9 +5,9 @@
 # 5d12bd2ad82098d674f0217d61d71adfb5dda62c0e996b04b337b2282a30977c
 # This file does not contain a certificate, a signed widget, or a device profile.
 
-diff -ruN a/app.js b/app.js
---- a/app.js	2026-11-08 10:58:49.318515635 -0500
-+++ b/app.js	2026-11-08 10:58:49.319983490 -0500
+diff -ruN omarchy-a/app.js omarchy-b/app.js
+--- a/app.js	2026-11-08 11:37:31.670433402 -0500
++++ b/app.js	2026-11-08 11:37:31.671713795 -0500
 @@ -12,7 +12,7 @@
    var STRINGS = {
      en: {
@@ -35,7 +35,69 @@ diff -ruN a/app.js b/app.js
        sys_clock: "Uhr",
        box_weather: "wetter", box_pc: "omarchy · pc", box_ai: "ki-guthaben · pc", box_tv: "tv", box_app: "app", box_ws_pc: "pc", box_system: "system",
        term_theme: "thema ", term_net: "netz ", term_up: "up ",
-@@ -1183,7 +1183,7 @@
+@@ -513,16 +513,22 @@
+     { id: "settings", name: "LG Settings", appId: "com.palm.app.settings", brand: "settings", bg: "linear-gradient(135deg, #27272a 0%, #18181b 100%)", fg: "#f43f5e", sub: "webOS" }
+   ];
+ 
+-  // Samsung Tizen build: tizen-shim.js discovers the installed apps and hands them over as
+-  // window.OMARCHY_TIZEN_APPS and/or the "omarchy-tizen-apps" event (detail = the same array), items
+-  // { id, name, tizenId, appId?, brand?, iconPath?, iconPaths? }. A valid list replaces the LG apps above; brand
+-  // styling is reused from the matching LG tile. Empty or invalid lists are ignored so the dock never empties.
+-  // iconPaths are the installed app's icon candidates in order (store cache, then its own icon); iconPath is the
+-  // first one, for older adapters. Only local paths are kept.
++  // Samsung Tizen build: the dock is the upstream wordmark tiles for Netflix,
++  // Spotify, and Prime Video. tizen-shim.js confirms those three are installed
++  // and hands them over as window.OMARCHY_TIZEN_APPS. Store icon files are not
++  // used. The gradient and the word on the tile are the OmarchyTV tiles.
+   var LG_APPS = DEFAULT_APPS;
+-  function tizenIconPath(p) {
+-    if (typeof p !== "string" || p.length > 1024 || /[\x00-\x1f"'<>\\]|\/\.\.(\/|$)/.test(p)) return undefined;
+-    return /^(file:\/\/)?\/[^\/]/.test(p) ? p : undefined;
++  var TIZEN_DOCK = [
++    { id: "netflix", tizenId: "org.tizen.netflix-app" },
++    { id: "spotify", tizenId: "rJeHak5zRg.Spotify" },
++    { id: "prime", tizenId: "org.tizen.primevideo" }
++  ];
++  function tizenDockApps() {
++    return TIZEN_DOCK.map(function (spec) {
++      var look = LG_APPS.filter(function (x) { return x.id === spec.id; })[0] || {};
++      return { id: spec.id, name: look.name || spec.id, appId: spec.tizenId, tizenId: spec.tizenId,
++        brand: spec.id, bg: look.bg, fg: look.fg, sub: look.sub };
++    });
+   }
+   function tizenAppList(list) {
+     if (!list || typeof list.length !== "number") return null;
+@@ -533,15 +539,13 @@
+           typeof a.tizenId !== "string" || !a.tizenId || seen[a.id]) continue;
+       seen[a.id] = true;
+       var brand = typeof a.brand === "string" && a.brand ? a.brand : a.id;
++      if (brand !== "netflix" && brand !== "spotify" && brand !== "prime") continue;
+       var look = LG_APPS.filter(function (x) { return x.brand === brand; })[0] || {};
+-      var icons = [];
+-      [a.iconPath].concat(Array.isArray(a.iconPaths) ? a.iconPaths.slice(0, 4) : []).forEach(function (p) {
+-        p = tizenIconPath(p);
+-        if (p && icons.indexOf(p) < 0) icons.push(p);
+-      });
+-      out.push({ id: a.id, name: a.name.replace(/[<>&"]/g, ""), appId: typeof a.appId === "string" && a.appId ? a.appId : a.tizenId,
+-        tizenId: a.tizenId, brand: brand, bg: look.bg, fg: look.fg, sub: look.sub, iconPaths: icons.length ? icons : undefined });
++      out.push({ id: brand, name: look.name || a.name.replace(/[<>&"]/g, ""), appId: typeof a.appId === "string" && a.appId ? a.appId : a.tizenId,
++        tizenId: a.tizenId, brand: brand, bg: look.bg, fg: look.fg, sub: look.sub });
+     }
++    var order = { netflix: 0, spotify: 1, prime: 2 };
++    out.sort(function (a, b) { return order[a.id] - order[b.id]; });
+     return out.length ? out : null;
+   }
+   function setTizenApps(list) { applyAppList(tizenAppList(list)); }
+@@ -559,7 +563,7 @@
+     renderAll();
+   }
+   if (window.OMARCHY_PLATFORM === "tizen") {
+-    DEFAULT_APPS = tizenAppList(window.OMARCHY_TIZEN_APPS) || DEFAULT_APPS;
++    DEFAULT_APPS = tizenAppList(window.OMARCHY_TIZEN_APPS) || tizenDockApps();
+     window.addEventListener("omarchy-tizen-apps", function (e) { setTizenApps(e && e.detail); });
+   }
+ 
+@@ -1183,7 +1187,7 @@
  
      var tip = document.getElementById("bar-tip");
      if (state.zone === "bar" && state.barIdx >= 6) {
@@ -44,7 +106,7 @@ diff -ruN a/app.js b/app.js
        tip.textContent = state.barIdx === 7 ? "OmarchyTV Arcade" : tr(tipKeys[state.barIdx - 6] || "tip_saver");   // a product name, the same in every language
        tip.style.display = "block";
      } else {
-@@ -2376,6 +2376,7 @@
+@@ -2376,6 +2380,7 @@
        if (window.tizen && window.tizen.application && window.tizen.ApplicationControl) {
          var ac = new window.tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", null, null, null,
            [new window.tizen.ApplicationControlData("PAYLOAD", ['{"values":"v=' + id + '"}'])]);
@@ -52,7 +114,7 @@ diff -ruN a/app.js b/app.js
          window.tizen.application.launchAppControl(ac, "111299001912", null, function () { window.tizen.application.launch("111299001912"); });
          return;
        }
-@@ -2806,6 +2807,7 @@
+@@ -2806,6 +2811,7 @@
          var tzId = app.tizenId || (window.OMARCHY_TIZEN_IDS || {})[app.id];
          if (!tzId) { showToast(app.name + " is not available on this TV"); return; }
          try {
@@ -60,7 +122,7 @@ diff -ruN a/app.js b/app.js
            window.tizen.application.launch(tzId, null, function (err) {
              showToast("Could not open " + app.name + ": " + ((err && (err.message || err.name)) || "launch failed"));
            });
-@@ -2833,6 +2835,37 @@
+@@ -2833,6 +2839,37 @@
      renderAll();
    }
  
@@ -98,7 +160,7 @@ diff -ruN a/app.js b/app.js
  
    // Grok Bot companion avatar, webOS/Tizen: Tom Ballard's shapes, palette and eyes (MIT, vendored from
    // his Agent Desktop v0.2.0, see vendor/grokbot/) drawn by companion.js. The motion follows
-@@ -2985,6 +3018,7 @@
+@@ -2985,6 +3022,7 @@
      try {
        if (lunaLaunch("com.webos.app.browser", { target: url })) return;
        if (window.tizen && window.tizen.ApplicationControl) {
@@ -106,7 +168,7 @@ diff -ruN a/app.js b/app.js
          window.tizen.application.launchAppControl(new window.tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", url), null, null, null);
          return;
        }
-@@ -2995,6 +3029,7 @@
+@@ -2995,6 +3033,7 @@
      try {
        if (lunaLaunch("com.webos.app.browser", { target: url })) return;
        if (window.tizen && window.tizen.ApplicationControl) {
@@ -114,7 +176,7 @@ diff -ruN a/app.js b/app.js
          window.tizen.application.launchAppControl(new window.tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", url), null, null, null);
          return;
        }
-@@ -3593,14 +3628,23 @@
+@@ -3593,14 +3632,23 @@
      if (state.modalOpen) renderModalList();
    }
  
@@ -141,7 +203,7 @@ diff -ruN a/app.js b/app.js
    }
  
    // Home widgets that can take focus, in on-screen order (state.widgetIdx: 0 terminal, 1 weather,
-@@ -3622,6 +3666,21 @@
+@@ -3622,6 +3670,21 @@
    // Keyboard / LG Remote Navigation
    var LEGACY_KEYS = { 8: "Backspace", 13: "Enter", 27: "Escape", 37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight", 40: "ArrowDown" };
    window.addEventListener("keydown", function (e) {
@@ -163,7 +225,7 @@ diff -ruN a/app.js b/app.js
      var ov = document.getElementById("saver-overlay");
      if (ov.className === "active") {
        stopScreensaver();
-@@ -3629,10 +3688,8 @@
+@@ -3629,10 +3692,8 @@
        return;
      }
  
@@ -176,7 +238,7 @@ diff -ruN a/app.js b/app.js
  
      // A long press opened a menu while OK is still held: drop its auto-repeat so it can't pick an item.
      if (state.okHeld && k === "Enter") { e.preventDefault(); return; }
-@@ -3690,7 +3747,7 @@
+@@ -3690,7 +3751,7 @@
      }
  
      if (state.zone === "bar") {
@@ -185,9 +247,9 @@ diff -ruN a/app.js b/app.js
        if (k === "ArrowLeft") { state.barIdx = Math.max(0, state.barIdx - 1); renderAll(); e.preventDefault(); return; }
        if (k === "ArrowDown") {
          if (state.ws === 0) state.zone = enterWidgets() ? "widgets" : "dock";
-diff -ruN a/config.xml b/config.xml
---- a/config.xml	2026-11-08 10:58:49.316153224 -0500
-+++ b/config.xml	2026-11-08 10:58:49.317342044 -0500
+diff -ruN omarchy-a/config.xml omarchy-b/config.xml
+--- a/config.xml	2026-11-08 11:37:31.673778797 -0500
++++ b/config.xml	2026-11-08 11:37:31.674967387 -0500
 @@ -2,6 +2,15 @@
  <widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
          id="http://marcoporro.it/omarchytv" version="2.14.0" viewmodes="maximized">
@@ -213,9 +275,9 @@ diff -ruN a/config.xml b/config.xml
      <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
      <tizen:profile name="tv-samsung"/>
  </widget>
-diff -ruN a/index.html b/index.html
---- a/index.html	2026-11-08 10:58:49.321346678 -0500
-+++ b/index.html	2026-11-08 10:58:49.322569382 -0500
+diff -ruN omarchy-a/index.html omarchy-b/index.html
+--- a/index.html	2026-11-08 11:37:31.676516446 -0500
++++ b/index.html	2026-11-08 11:37:31.677596562 -0500
 @@ -888,8 +888,21 @@
            <circle cx="18.5" cy="14.5" r="1.1"/>
          </svg>
@@ -273,10 +335,76 @@ diff -ruN a/index.html b/index.html
          <svg viewBox="0 0 24 24">
            <rect x="2" y="3" width="20" height="14"/>
            <line x1="8" y1="21" x2="16" y2="21"/>
-diff -ruN a/tizen-shim.js b/tizen-shim.js
---- a/tizen-shim.js	2026-11-08 10:58:49.323378747 -0500
-+++ b/tizen-shim.js	2026-11-08 10:58:49.324134110 -0500
-@@ -122,6 +122,7 @@
+diff -ruN omarchy-a/tizen-shim.js omarchy-b/tizen-shim.js
+--- a/tizen-shim.js	2026-11-08 11:37:31.679470984 -0500
++++ b/tizen-shim.js	2026-11-08 11:37:31.680272695 -0500
+@@ -4,30 +4,6 @@
+   if (!window.tizen) return;
+   window.OMARCHY_PLATFORM = "tizen";
+   window.OMARCHY_TIZEN_IDS = {};
+-  var selfId = "OmarchyTV0.OmarchyTV";
+-  try { selfId = window.tizen.application.getCurrentApplication().appInfo.id || selfId; } catch (e) {}
+-  var preloaded = ["org.tizen.netflix-app", "org.tizen.primevideo", "org.tizen.apple.apple-music", "org.tizen.browser", "com.samsung.tv.aria-video", "com.samsung.tv.SmartThingsApp"];
+-  var excluded = [selfId, "OmKeyCtrl0.Keys", "adplatform.ADPlayer", "WykOS4t4F0.cmsWebApp", "25emanual3.emanual", "ZODRT12q2l.WebAccountExtension", "ByJlgt0XeD.CastSettingsApp", "tv6pbVMQFF.PrivacyChoices", "w2VwCK465D.OTApp", "J9fZJDMi1v.SecurityCenter"];
+-  var brands = {netflix:"netflix",primevideo:"prime",amazonprimevideo:"prime",youtube:"youtube",disneyplus:"disney",disney:"disney",spotify:"spotify",jellyfin:"jellyfin",plex:"plex",hbomax:"hbomax",max:"hbomax",appletv:"appletv",hulu:"hulu",peacocktv:"peacock",youtubetv:"youtubetv",xbox:"xbox",internet:"browser"};
+-  // Native icons can be missing or generic. These store IDs and images were verified on the TV.
+-  var iconStoreIds = {
+-    "org.tizen.netflix-app": "3201907018807",
+-    "org.tizen.primevideo": "3201910019365",
+-    "MCmYXNxgcu.DisneyPlus": "3201901017640",
+-    "LBUAQX1exg.Hulu": "3201601007625",
+-    "com.samsung.tv.aria-video": "3201807016597",
+-    "gzcc4LRFBF.Peacock": "3202006020991",
+-    "ZmmGjO6VKO.slingtv": "3201707014448",
+-    "9Ur5IzDKqV.TizenYouTube": "111299001912",
+-    "rJeHak5zRg.Spotify": "3201606009684",
+-    "PvWgqxV3Xa.YouTubeTV": "3201707014489",
+-    "com.samsung.tv.SmartThingsApp": "3202311033054",
+-    "org.tizen.browser": "3202010022079",
+-    "GHI3a0zMSx.XboxGamePass": "3202203026799",
+-    "5b8c3eb16b.BeamCTVDev": "3202301029760",
+-    "OGLLvqej7u.CrunchyrollWebApp": "3202302030097",
+-    "rTn6ClEurC.Jellyfin": "3202007021208"
+-  };
+   var discovering = false;
+   var checkingHelper = false;
+   var helperInstalled = false;
+@@ -53,19 +29,21 @@
+         discovering = false;
+         helperInstalled = apps.some(function (a) { return a && a.id === "OmKeyCtrl0.Keys"; });
+         ensureButtonHelper();
+-        var seen = {}, rows = [];
+-        apps.forEach(function (a) {
+-          if (!a || !a.id || !a.name || seen[a.id] || excluded.indexOf(a.id) >= 0) return;
+-          if (preloaded.indexOf(a.id) < 0 && (a.show === false || !/^(?:[A-Za-z0-9]{10}\.[A-Za-z0-9_-]+|\d{9,13})$/.test(a.id) || /^\d{4}ePop\d+\./i.test(a.id) || /service|worker|preview|promotion|plugin|launcher|test|sdk|factory|daemon|dummy|agent|e-?manual|account|adplayer|privacy|security/i.test(a.name + " " + a.id))) return;
+-          seen[a.id] = true;
+-          var brand = brands[a.name.toLowerCase().replace(/[^a-z0-9]/g, "")];
+-          var id = brand && !seen["brand:" + brand] ? brand : a.id;
+-          seen["brand:" + brand] = true;
+-          var iconPaths = [];
+-          if (iconStoreIds[a.id]) iconPaths.push("/opt/share/webappservice/apps_icon/all/" + iconStoreIds[a.id] + "/304x304.png");
+-          if (typeof a.iconPath === "string" && a.iconPath && iconPaths.indexOf(a.iconPath) < 0) iconPaths.push(a.iconPath);
+-          rows.push({id:id, name:a.name, appId:a.id, tizenId:a.id, iconPath:iconPaths[0] || "", iconPaths:iconPaths, brand:brand || id});
+-          window.OMARCHY_TIZEN_IDS[id] = a.id;
++        // The dock is Netflix, Spotify, and Prime Video, drawn as the Omarchy
++        // wordmark tiles in app.js. Store PNGs and the rest of the installed
++        // list are not copied in. The wordmarks are the tiles from upstream.
++        var specs = [
++          { id: "netflix", tizenId: "org.tizen.netflix-app", name: "Netflix" },
++          { id: "spotify", tizenId: "rJeHak5zRg.Spotify", name: "Spotify" },
++          { id: "prime", tizenId: "org.tizen.primevideo", name: "Prime Video" }
++        ];
++        var byId = {};
++        apps.forEach(function (a) { if (a && a.id) byId[a.id] = a; });
++        var rows = [];
++        specs.forEach(function (spec) {
++          if (!byId[spec.tizenId]) return;
++          rows.push({ id: spec.id, name: spec.name, appId: spec.tizenId, tizenId: spec.tizenId, brand: spec.id });
++          window.OMARCHY_TIZEN_IDS[spec.id] = spec.tizenId;
+         });
+         if (!rows.length) return;
+         window.OMARCHY_TIZEN_APPS = rows;
+@@ -122,6 +100,7 @@
      function viewer() {
        if (!active()) return;
        try {
@@ -284,7 +412,7 @@ diff -ruN a/tizen-shim.js b/tizen-shim.js
          window.tizen.application.launch("org.tizen.tv-viewer", function () { finish(); }, function (e) {
            finish(new Error(("Switched to " + label + " but could not open the TV viewer: ") + ((e && (e.message || e.name)) || "launch failed")));
          });
-@@ -138,7 +139,7 @@
+@@ -138,7 +117,7 @@
        } catch (e) { return false; }
      }
      function showSource() {
@@ -293,7 +421,7 @@ diff -ruN a/tizen-shim.js b/tizen-shim.js
        catch (e) { viewer(); }
      }
      try {
-@@ -169,9 +170,20 @@
+@@ -169,9 +148,20 @@
    try {
      var keys = ["MediaPlayPause", "MediaPlay", "MediaPause", "MediaStop", "MediaFastForward", "MediaRewind",
        "ChannelUp", "ChannelDown", "ColorF0Red", "ColorF1Green", "ColorF2Yellow", "ColorF3Blue",

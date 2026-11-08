@@ -20,6 +20,14 @@ remove
     session. The developer user can run pkgcmd -u for these ids. A package
     that is already gone is left alone, and the command then runs check.
 
+settle
+    The command a boot cycle can run from this PC. No Remote PC session.
+    Read the app list. When the TV is off, exit 0. When every targeted id is
+    already absent, exit 0 without running pkgcmd. When a boot has listed
+    one again, deactivate that packages.txt id and uninstall that removed.txt
+    package as the developer user, then run check. org.tizen.tv-viewer is
+    refused. It is the picture.
+
 On this firmware, pkgcmd -D without -t is rejected as an invalid argument.
 The form that returned ok is:
 
@@ -335,7 +343,7 @@ def cmd_deactivate(args: argparse.Namespace, packages: tuple[str, ...]) -> int:
     return 0
 
 
-def capture_staged(client, command: str, bind: str):
+def capture_staged(client, command: str, bind: str, timeout: int = 60):
     """Push a script, then source it. Direct injection of pkgcmd -u is closed."""
     token = os.urandom(8).hex()
     remote = PurePosixPath(f"/home/owner/share/tmp/sdk_tools/.un43-remove-{token}.sh")
@@ -347,8 +355,83 @@ def capture_staged(client, command: str, bind: str):
         f". {remote}",
         callback_host=bind,
         bind_host=bind,
-        timeout=60,
+        timeout=timeout,
     )
+
+
+def deactivate_shell(package: str) -> str:
+    """Remote pkgcmd -D for one id. Try tpk, then app. Stop it first."""
+    return (
+        f"pkgcmd -k -n {package} >/dev/null 2>&1 || true; "
+        f"pkgcmd -D -t tpk -n {package} --global >/tmp/pkg-one.txt 2>&1; "
+        f"st=$?; "
+        f"if [ \"$st\" -ne 0 ]; then pkgcmd -D -t app -n {package} --global "
+        f">/tmp/pkg-one.txt 2>&1; st=$?; fi; "
+        f"echo DEACTIVATE {package}:$st; tail -c 160 /tmp/pkg-one.txt; echo"
+    )
+
+
+def cmd_settle(
+    args: argparse.Namespace,
+    packages: tuple[str, ...],
+    kept: tuple[str, ...],
+    removals: tuple[Removal, ...],
+) -> int:
+    """Re-apply the lists as the developer user. A powered-off TV exits 0.
+
+    Only ids that the app list shows are sent to pkgcmd. A clean list does
+    not open a package-command session.
+    """
+    if "org.tizen.tv-viewer" in packages or any(
+        row.app_id == "org.tizen.tv-viewer" or row.package_id == "org.tizen.tv-viewer"
+        for row in removals
+    ):
+        print("refusing: org.tizen.tv-viewer is the picture", file=sys.stderr)
+        return 2
+    try:
+        found = present_ids(connect_and_applist(args.sdb, args.tv))
+    except (OSError, subprocess.TimeoutExpired, RuntimeError) as error:
+        print(f"SETTLE tv={args.tv} status=off error={error}")
+        return 0
+    back = [pkg for pkg in packages if pkg in found]
+    aliases = [
+        alias
+        for pkg, alias in PACKAGE_ALIASES.items()
+        if pkg in found and alias not in back
+    ]
+    groups = [
+        group
+        for group in uninstall_groups(removals)
+        if any(app_id in found for app_id in group[2])
+    ]
+    if not back and not aliases and not groups:
+        print(f"SETTLE tv={args.tv} status=clean")
+        return 0
+    source = args.tizenpwn / "src"
+    if not (source / "tizenpwn" / "sdb.py").is_file():
+        print(f"tizenpwn source not found at {source}", file=sys.stderr)
+        return 2
+    os.environ["SDB"] = str(args.sdb)
+    sys.path.insert(0, str(source))
+    from tizenpwn.sdb import SdbClient, SdbError
+
+    parts = [deactivate_shell(pkg) for pkg in back]
+    parts.extend(deactivate_shell(alias) for alias in aliases)
+    parts.extend(uninstall_shell(pkg, kind, app_ids) for pkg, kind, app_ids in groups)
+    print(
+        f"SETTLE tv={args.tv} status=apply deactivate={','.join(back) or '-'} "
+        f"remove={','.join(group[0] for group in groups) or '-'}",
+        flush=True,
+    )
+    try:
+        client = SdbClient(args.sdb, args.tv, timeout=30)
+        client.connect()
+        result = capture_staged(client, "\n".join(parts) + "\n", args.bind_host, timeout=120)
+    except (SdbError, OSError) as error:
+        print(f"SETTLE tv={args.tv} status=error error={error}")
+        return 2
+    print(result.output.strip(), flush=True)
+    return cmd_check(args.sdb, args.tv, packages, kept, removals)
 
 
 def cmd_remove(args: argparse.Namespace, removals: tuple[Removal, ...], packages: tuple[str, ...], kept: tuple[str, ...]) -> int:
@@ -443,6 +526,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     uninstall.add_argument("--tizenpwn", type=Path, default=DEFAULT_TIZENPWN)
     uninstall.add_argument("--bind-host", default=DEFAULT_BIND)
+    settle = sub.add_parser(
+        "settle",
+        parents=[common],
+        help="re-disable packages a boot listed again, as the developer user",
+    )
+    settle.add_argument("--tizenpwn", type=Path, default=DEFAULT_TIZENPWN)
+    settle.add_argument("--bind-host", default=DEFAULT_BIND)
     return parser
 
 
@@ -483,6 +573,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check(args.sdb, args.tv, packages, kept, removals)
     if args.action == "remove":
         return cmd_remove(args, removals, packages, kept)
+    if args.action == "settle":
+        return cmd_settle(args, packages, kept, removals)
     return cmd_deactivate(args, packages)
 
 

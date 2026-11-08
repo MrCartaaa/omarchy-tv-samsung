@@ -18,7 +18,7 @@ Upstream is [piermark/omarchytv](https://github.com/piermark/omarchytv). The bui
 
 ## Exit returns to the dock
 
-Exit focuses `org.tizen.tv-viewer`. Samsung TV Plus can focus `com.samsung.tv.tvplus` instead. `scripts/session/omarchy-exit-hook.sh` watches those two statuses. On the rising edge it runs:
+Exit resumes `org.tizen.tv-viewer`, and Samsung TV Plus tunes a channel on that picture. While the channel is up, `aul_test get_status` stays `STATUS_BG`, so a focus poll does not see it. The Samsung TV Plus button on this remote is a different foreground: `org.tizen.epg`, the guide. It stays there, and a power cycle was the way out. `scripts/session/omarchy-exit-hook.sh` follows the scenario log and raises OmarchyTV on the first line of a visit that names `org.tizen.tv-viewer`, `com.samsung.tv.tvplus`, or `org.tizen.epg`. Power-on still opens the picture, and that picture is still one raise. A visit that moves from the guide to the picture does not launch a second time. On that edge it runs:
 
 ```text
 aul_test launch OmarchyTV0.OmarchyTV omarchy_nav home
@@ -39,9 +39,10 @@ setsid sh -c '. /home/owner/share/tmp/sdk_tools/omarchy-exit-hook.sh' \
 
 `patches/omarchytv-un43.patch` is the difference between the published `v2.14.0-beta` widget and the package installed on this TV. Apply it to an unpacked copy of that exact file. The patch keeps `required_version` at `2.3` and the same public privileges.
 
-It does four things:
+It does five things:
 
 - The top-right cluster opens this set's own screens. Bluetooth is `org.tizen.btaudiolist`. Internet is `com.samsung.tv.knox-browser`, the package this TV labels Internet. Network is `org.tizen.NetworkSetting-Tizen`, the network and Wi-Fi screen. Volume is `org.tizen.volume-setting`. Upstream sent that cluster to `com.palm.app.settings`.
+- The dock is Netflix, Spotify, and Prime Video, using the upstream wordmark tiles (the gradient and the name). The Tizen shim used to replace that list with every installed app and Samsung's store PNG. Those store icons are not used. The other upstream tiles stay in `DEFAULT_APPS` and are not placed on this dock.
 - Exit, Return, and Back while this app is in front move to workspace 0 in the same page. `background-support` is `enable`. Becoming visible again calls `OMARCHY_GO_HOME` unless the app itself just launched the tuner or another app.
 - `aul_test launch OmarchyTV0.OmarchyTV omarchy_nav home` on the running process reads `omarchy_nav=home` and calls `OMARCHY_GO_HOME`. `reload` is `disable` on the main and `eden_resume` app-controls, so that launch does not load the page again.
 - `tizen:category` is `http://tizen.org/category/tv`. The Apps grid on this set still does not list the widget.
