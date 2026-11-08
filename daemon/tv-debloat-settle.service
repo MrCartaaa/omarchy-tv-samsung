@@ -1,0 +1,11 @@
+[Unit]
+Description=Re-apply the Samsung TV debloat lists while the TV is on
+
+[Service]
+Type=oneshot
+# install.sh replaces @SETTLE_SCRIPT@ with the absolute path of
+# tv-debloat-settle.sh in this clone. flock skips the run when a previous
+# settle still holds the lock.
+ExecStart=/usr/bin/flock -n /tmp/omarchy-tv-samsung-sdb.lock @SETTLE_SCRIPT@
+TimeoutStartSec=3min
+Nice=15

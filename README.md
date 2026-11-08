@@ -6,6 +6,10 @@ Out of the box the set shows Samsung's own screens, plays ads around them, and k
 
 Nothing here flashes new firmware. The step that needs root is one click at the TV, from a PC. No root program was left running on the set.
 
+## The lists do not stick by themselves
+
+Turning a package off on this set is not permanent. A boot can list those packages again, and it can copy the AirPlay preload back. The television has no daemon that turns them off. A computer on the same network has to keep running the timer in [daemon/](daemon/README.md). While that computer is off, a boot can bring the packages back, and they stay until the computer is on again and the timer runs. Setup is [Keep the lists from a PC](#keep-the-lists-from-a-pc).
+
 ## What you will see on the TV
 
 OmarchyTV is the front page. Its dock is three tiles: Netflix, Spotify, and Prime Video. The top-right corner opens this set's own Bluetooth, Internet, network, and volume screens.
@@ -16,6 +20,7 @@ A few things are still the stock TV. The physical Home button, pressed inside Ne
 
 ## On this page
 
+- [The lists do not stick by themselves](#the-lists-do-not-stick-by-themselves) is why a computer has to keep the timer running.
 - [What you will see on the TV](#what-you-will-see-on-the-tv) is the result, without the package names.
 - [If you are going to run this](#if-you-are-going-to-run-this) is the short path, with the files each step uses.
 - [Deactivate, do not uninstall](#deactivate-do-not-uninstall) is the safety rule for the lists below.
@@ -26,7 +31,8 @@ A few things are still the stock TV. The physical Home button, pressed inside Ne
 - [Repositories this work depends on](#repositories-this-work-depends-on) is the other projects, and the commit that was actually used.
 - [pkgcmd on this firmware](#pkgcmd-on-this-firmware) is how this Tizen version turns a package off.
 - [Check the list](#check-the-list) reads the TV and compares it with the files in this repo.
-- [Remove AirPlay](#remove-airplay) uninstalls AirPlay, and covers the boot job that puts the turned-off ids back.
+- [Remove AirPlay](#remove-airplay) uninstalls AirPlay.
+- [Keep the lists from a PC](#keep-the-lists-from-a-pc) is the timer that puts the lists back after a boot. The files are in [daemon/](daemon/README.md).
 - [Repeat a deactivate](#repeat-a-deactivate) is the one-time root click, done at the TV.
 - [Layout](#layout) is the file tree.
 - [docs/omarchytv.md](docs/omarchytv.md) is the home-screen install: the certificate, the widget patch, Exit, and the volume rocker.
@@ -40,9 +46,22 @@ Confirm the model code on the TV before you run anything. A different Samsung ye
 3. Connect a PC with Samsung's SDB tool. [Check the list](#check-the-list) is `python3 scripts/tv_debloat.py check`. It only reads.
 4. The first turn-off needs someone at the TV. Follow [Repeat a deactivate](#repeat-a-deactivate). The root tool is [rackrot/tizenpwn](https://github.com/rackrot/tizenpwn) plus [patches/tizenpwn-un43-allowlist.patch](patches/tizenpwn-un43-allowlist.patch), which adds this 43-inch model to a tool that otherwise names the 65-inch only.
 5. Install the home screen from [docs/omarchytv.md](docs/omarchytv.md). The widget changes are [patches/omarchytv-un43.patch](patches/omarchytv-un43.patch). The certificate is created for that TV and is not in this repository.
-6. After each power-on, source [scripts/session/omarchy-exit-hook.sh](scripts/session/omarchy-exit-hook.sh) once. That script is what sends Exit and the TV Plus button back to the dock, and what ignores the volume rocker. A second source leaves the running copy in place.
+6. After each power-on, source [scripts/session/omarchy-exit-hook.sh](scripts/session/omarchy-exit-hook.sh) once. That script is what sends Exit and the TV Plus button back to the dock, and what ignores the volume rocker. A second source leaves the running copy in place. The PC timer does not start this script.
+7. Install the PC timer in [Keep the lists from a PC](#keep-the-lists-from-a-pc). Without it, the next boot can put the turned-off packages back.
 
-A later boot can turn some of the ad packages back on, and it can copy the AirPlay package back. [Remove AirPlay](#remove-airplay) includes `settle`, which puts the lists back without another root click while the PC is on.
+## Keep the lists from a PC
+
+The timer runs on a computer, not on the television. It calls `python3 scripts/tv_debloat.py settle` every five minutes while that computer is on. `settle` reads the app list. An id that came back is deactivated, or uninstalled when it is AirPlay. A clean list does not run `pkgcmd`. The television being off is a success. There is no Remote PC click.
+
+On the computer:
+
+1. Install Samsung's `sdb`, and clone [rackrot/tizenpwn](https://github.com/rackrot/tizenpwn) at the commit in [Repositories this work depends on](#repositories-this-work-depends-on).
+2. Turn on developer mode on the television and set its host to this computer's LAN address.
+3. From this clone, copy [daemon/settle.env.example](daemon/settle.env.example) to `daemon/settle.env`. Set `TV_ADDR` to the television, `BIND_HOST` to this computer, `SDB_BIN` to the `sdb` binary, and `TIZENPWN` to that checkout. `daemon/settle.env` is not committed.
+4. Run [daemon/install.sh](daemon/install.sh). It installs a user systemd timer and enables it.
+5. If the computer should keep the lists applied with nobody logged in, run `loginctl enable-linger "$USER"`.
+
+The log is under `~/.local/state/tv-debloat-settle/`. File by file notes are in [daemon/README.md](daemon/README.md).
 
 ## Deactivate, do not uninstall
 
@@ -214,15 +233,11 @@ python3 scripts/tv_debloat.py remove
 
 A package that is already gone makes `pkgcmd -u` print an error and does not come back from that command. The check after it is the result. Run it again when a boot has copied the AirPlay preload back and `check` reports that id present.
 
-The PC in this lab also runs `~/.config/bash_custom/scripts/telemetry-probe.sh` once a day. That script calls this check and records the lines. A TV that is off does not fail the PC job.
-
-A boot can list the deactivated ids and the AirPlay preload again. `settle` is the command that puts them back without a Remote PC click. It reads the app list as the developer user. A TV that is off exits 0. A list that is already clean does not run `pkgcmd`. An id that came back is deactivated, or uninstalled when it is in `removed.txt`, and then the same check runs. `org.tizen.tv-viewer` is refused. It is the picture.
+A boot can list the deactivated ids and the AirPlay preload again. The timer in [daemon/](daemon/README.md) runs `settle` and puts them back. `org.tizen.tv-viewer` is refused. It is the picture. One run by hand, with the same flags the timer uses:
 
 ```bash
-python3 scripts/tv_debloat.py settle
+python3 scripts/tv_debloat.py settle --tv <tv-ip> --sdb /path/to/sdb --bind-host <pc-ip> --tizenpwn /path/to/tizenpwn
 ```
-
-On this PC that command is `~/.config/bash_custom/scripts/tv-debloat-settle.sh`, started by the user timer `tv-debloat-settle.timer` about every 5 minutes while the PC is on. The TV does not keep its own copy of the job across power-off.
 
 ## Repeat a deactivate
 
@@ -272,6 +287,9 @@ scripts/supervise.py         terminal gate for an unattended session
 scripts/session/watch-login.sh
 scripts/session/arm-click.sh
 scripts/session/omarchy-exit-hook.sh
+daemon/                      PC timer that re-applies the lists after a boot
+daemon/settle.env.example    addresses and tool paths, copied to settle.env
+daemon/install.sh            installs the user systemd timer
 patches/tizenpwn-un43-allowlist.patch
 patches/omarchytv-un43.patch    top-right bar, Exit stays in the same process
 docs/omarchytv.md            install notes, the widget patch, and the Exit hook

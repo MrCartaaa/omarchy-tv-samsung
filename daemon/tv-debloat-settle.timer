@@ -1,0 +1,14 @@
+[Unit]
+Description=Re-apply the Samsung TV debloat lists while the TV is on
+
+[Timer]
+# First run after the computer boots, then every five minutes. Persistent
+# means one missed run is made up after the computer was off. The television
+# does not keep this timer.
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
