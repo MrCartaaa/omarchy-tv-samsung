@@ -1,0 +1,58 @@
+diff --git i/src/tizenpwn/tu7000.py w/src/tizenpwn/tu7000.py
+index 8683e7a..9d04cd2 100644
+--- i/src/tizenpwn/tu7000.py
++++ w/src/tizenpwn/tu7000.py
+@@ -1,7 +1,8 @@
+ """TU7000 T-KTSU2AKUC-2743.0 Remote PC/CIFS one-shot root route.
+ 
+-This route is bound to one owner-observed target: an UN65TU7000FXZA running
+-build T-KTSU2AKUC-REL-202607021959 (release T-KTSU2AKUC-2743.0). It uses the
++This route is bound to build T-KTSU2AKUC-REL-202607021959 (release
++T-KTSU2AKUC-2743.0). The reviewed retail set is UN65TU7000FXZA. UN43TU7000FXZC
++is accepted when that same build and the four reviewed file hashes match. It uses the
+ SDB package-name foothold only for read-only assessment and for the two-push
+ UID-0 classifier. Root command execution comes from the reviewed Remote PC
+ privileged CIFS helper on the TV; it is triggered by one manual Shared Folder
+@@ -37,6 +38,8 @@ from .sdb import SdbClient, SdbError, find_sdb, route_callback_host
+ 
+ 
+ MODEL = "UN65TU7000FXZA"
++# Same AKUC 2743.0 image as the reviewed 65-inch set. The retail string differs.
++ALLOWED_MODELS = frozenset({MODEL, "UN43TU7000FXZC"})
+ FIRMWARE = "T-KTSU2AKUC-2743.0"
+ TESTED_BUILD = "T-KTSU2AKUC-REL-202607021959"
+ CONFIRMATION = "TU7000-T-KTSU2AKUC-2743.0"
+@@ -328,9 +331,10 @@ def assess_target(
+     client.connect()
+     client.require_device()
+     model = client.reported_model()
+-    if model != MODEL:
++    if model not in ALLOWED_MODELS:
+         raise CifsRouteError(
+-            f"target reports model {model or 'unknown'}, expected {MODEL}"
++            f"target reports model {model or 'unknown'}, expected {MODEL} "
++            "or UN43TU7000FXZC"
+         )
+     client.require_shell_injection()
+     output = _capture(client, PROBE_COMMAND, sdb_timeout)
+diff --git i/tests/test_tu7000.py w/tests/test_tu7000.py
+index c7ab709..f060b58 100644
+--- i/tests/test_tu7000.py
++++ w/tests/test_tu7000.py
+@@ -137,6 +137,16 @@ def test_exact_target_assessment_verifies_reviewed_artifacts() -> None:
+     assert all(artifact.verified for artifact in assessment.artifacts)
+ 
+ 
++def test_assessment_accepts_same_build_43_inch_model() -> None:
++    assessment = assess_target(
++        "192.0.2.10",
++        client=FakeClient(model="UN43TU7000FXZC"),
++    )
++
++    assert assessment.model == "UN43TU7000FXZC"
++    assert all(artifact.verified for artifact in assessment.artifacts)
++
++
+ def test_assessment_rejects_another_model_before_live_work() -> None:
+     with pytest.raises(CifsRouteError, match="expected UN65TU7000FXZA"):
+         assess_target(

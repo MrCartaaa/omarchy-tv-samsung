@@ -1,0 +1,16 @@
+# App and package ids to take off the UN43TU7000FXZC app list.
+# The operation is pkgcmd -D (deactivate), not pkgcmd -u (uninstall).
+# Deactivate leaves the install directory on disk. -A turns the same id back on.
+# One id per line. Blank lines and # comments are ignored.
+
+com.samsung.tv.adplayer
+adplatform.ADPlayer
+com.samsung.tv.ad-web-framework
+com.samsung.tv.adagent-service
+org.tizen.acr-service-app
+com.samsung.tv.canalysis-service
+com.samsung.tizen.samsung-analytics
+com.samsung.tv.pisa-service
+org.tizen.pisa-control-service
+com.samsung.tv.vd-sc-client-service
+com.samsung.tv.coba.adagent

@@ -1,0 +1,10 @@
+# These stay listed. check reports them so a later run can see if Home moved.
+# com.samsung.tv.coba.adagent is not in this file. It is in packages.txt.
+
+com.samsung.tv.coba.home
+com.samsung.tv.coba.source
+com.samsung.tv.coba.apps
+com.samsung.tv.coba.setting
+com.samsung.tv.coba.livetv
+com.samsung.tv.coba.search
+tv6pbVMQFF.PrivacyChoices
