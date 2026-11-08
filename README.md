@@ -165,7 +165,7 @@ scripts/supervise.py         terminal gate for an unattended session
 scripts/session/watch-login.sh
 scripts/session/arm-click.sh
 patches/tizenpwn-un43-allowlist.patch
-docs/omarchytv.md            not installed; Tizen 5.5 still needs a build
+docs/omarchytv.md            installed as an app; Home was not changed
 ```
 
-OmarchyTV is the next piece of work and is not part of the deactivate command. The notes for a backwards-compatible build are in [docs/omarchytv.md](docs/omarchytv.md).
+OmarchyTV is installed as app id `OmarchyTV0.OmarchyTV`. It is not part of the deactivate command, and it is not the Home screen. Open it from the Apps list. The install notes are in [docs/omarchytv.md](docs/omarchytv.md).
