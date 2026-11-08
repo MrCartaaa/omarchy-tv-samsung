@@ -54,7 +54,7 @@ Another UN43TU7000 uses its own DUID. The certificate that signed this set is fo
 3. From that directory:
 
 ```bash
-patch -p1 < /path/to/un43tu7000-debloat/patches/omarchytv-un43.patch
+patch -p1 < /path/to/omarchy-tv-samsung/patches/omarchytv-un43.patch
 ```
 
 4. Create a Samsung author and distributor certificate whose distributor certificate contains this television's DUID. Tizen Studio 6.0's `tizen` command runs under the bundled Java 8, not a newer system Java. Sign with `tizen package -t wgt -s <profile>`.
