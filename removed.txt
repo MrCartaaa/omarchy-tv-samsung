@@ -1,0 +1,12 @@
+# Applist ids to uninstall with pkgcmd -u. This is not packages.txt.
+# packages.txt is pkgcmd -D. Deactivate leaves the directory, and a boot
+# listed AirPlay again. These ids are removed instead.
+#
+# Columns: applist-id, package-id, type. Type is tpk or wgt.
+# The script uninstalls each package-id once. A second applist id in the
+# same package is listed so check can see that app come back on its own.
+# Blank lines and # comments are ignored.
+
+NRi6kdBYJ0.AirPlayWebApp NRi6kdBYJ0 wgt
+com.samsung.tv.airplay-app com.samsung.tv.airplay-app tpk
+com.samsung.tv.airplay-service com.samsung.tv.airplay-app tpk

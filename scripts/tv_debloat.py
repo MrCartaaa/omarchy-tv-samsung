@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
-"""Check or deactivate the ad, ACR, analytics, and Pisa packages on this TV.
+"""Check, deactivate, or uninstall packages on this TV.
 
 The set this was written for is a Samsung UN43TU7000FXZC running firmware
 T-KTSU2AKUC-2743.0 (build T-KTSU2AKUC-REL-202607021959), Tizen 5.5.
 
 check
     Read the app list over SDB. No root and no Remote PC session. Exit 0 when
-    every id in packages.txt is absent and every id in kept.txt is still
-    present. Exit 1 when a listed id is still present or a kept id is missing.
-    Exit 2 when the TV cannot be read.
+    every id in packages.txt and removed.txt is absent and every id in
+    kept.txt is still present. Exit 1 when a listed id is still present or a
+    kept id is missing. Exit 2 when the TV cannot be read.
 
 deactivate
     One-shot root through rackrot/tizenpwn's reviewed TU7000 CIFS route.
-    The click runs pkgcmd -D, which deactivates a package and leaves its
-    files on disk. This script does not call pkgcmd -u.
+    The click runs pkgcmd -D for packages.txt only. Deactivate leaves the
+    install directory on disk.
+
+remove
+    Uninstall each package named in removed.txt with pkgcmd -u. No Remote PC
+    session. The developer user can run pkgcmd -u for these ids. A package
+    that is already gone is left alone, and the command then runs check.
 
 On this firmware, pkgcmd -D without -t is rejected as an invalid argument.
 The form that returned ok is:
@@ -38,9 +43,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
-from pathlib import Path
+import tempfile
+import time
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TV = "<tv-ip>"
@@ -52,6 +61,18 @@ RESULT_LOG = "/home/owner/share/tmp/debloat-result"
 # Applist id -> extra package name that does not appear as its own app id.
 PACKAGE_ALIASES = {"adplatform.ADPlayer": "adplatform"}
 
+_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+_KINDS = {"tpk", "wgt"}
+
+
+@dataclass(frozen=True)
+class Removal:
+    """One applist id, the package pkgcmd -u must name, and that package's type."""
+
+    app_id: str
+    package_id: str
+    kind: str
+
 
 def load_ids(path: Path) -> tuple[str, ...]:
     """Return ids from a line-oriented list. Comments and blanks are skipped."""
@@ -62,7 +83,66 @@ def load_ids(path: Path) -> tuple[str, ...]:
             ids.append(line)
     if not ids:
         raise SystemExit(f"{path} has no package ids")
+    odd = [pkg for pkg in ids if not _ID.fullmatch(pkg)]
+    if odd:
+        raise SystemExit(f"{path} has an id that is not a package id: {odd[0]}")
     return tuple(ids)
+
+
+def load_removals(path: Path) -> tuple[Removal, ...]:
+    """Return uninstall rows. Each data line is `applist-id package-id tpk|wgt`."""
+    rows: list[Removal] = []
+    kinds: dict[str, str] = {}
+    for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) != 3 or parts[2] not in _KINDS:
+            raise SystemExit(
+                f"{path}:{number}: expected 'applist-id package-id tpk|wgt'"
+            )
+        app_id, package_id, kind = parts
+        if not _ID.fullmatch(app_id) or not _ID.fullmatch(package_id):
+            raise SystemExit(f"{path}:{number}: id has unexpected characters")
+        previous = kinds.get(package_id)
+        if previous is not None and previous != kind:
+            raise SystemExit(
+                f"{path}:{number}: {package_id} is listed as both {previous} and {kind}"
+            )
+        kinds[package_id] = kind
+        rows.append(Removal(app_id, package_id, kind))
+    if not rows:
+        raise SystemExit(f"{path} has no package ids")
+    return tuple(rows)
+
+
+def uninstall_groups(rows: tuple[Removal, ...]) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    """One pkgcmd -u per package, with every applist id that package contains."""
+    order: list[str] = []
+    apps: dict[str, list[str]] = {}
+    kinds: dict[str, str] = {}
+    for row in rows:
+        if row.package_id not in apps:
+            order.append(row.package_id)
+            apps[row.package_id] = []
+            kinds[row.package_id] = row.kind
+        if row.app_id not in apps[row.package_id]:
+            apps[row.package_id].append(row.app_id)
+    return tuple((pkg, kinds[pkg], tuple(apps[pkg])) for pkg in order)
+
+
+def uninstall_shell(package: str, kind: str, app_ids: tuple[str, ...]) -> str:
+    """Remote pkgcmd -u. The caller writes this to a file and sources it.
+
+    A direct SDB injection of this text is closed by this TV. Pushing the
+    file and sourcing it is the path that returns the pkgcmd result.
+    """
+    kills = "; ".join(f"pkgcmd -k -n {app_id} >/dev/null 2>&1" for app_id in app_ids)
+    return (
+        f"{kills}; pkgcmd -u -t {kind} -n {package} --global >/tmp/pkg-one.txt 2>&1; "
+        f"echo {package}:$?; tail -c 180 /tmp/pkg-one.txt"
+    )
 
 
 def quoted_fields(line: str) -> list[str]:
@@ -119,7 +199,13 @@ def present_ids(applist: str) -> set[str]:
     return found
 
 
-def cmd_check(sdb: Path, tv: str, packages: tuple[str, ...], kept: tuple[str, ...]) -> int:
+def cmd_check(
+    sdb: Path,
+    tv: str,
+    packages: tuple[str, ...],
+    kept: tuple[str, ...],
+    removals: tuple[Removal, ...],
+) -> int:
     """Print one CHECK line per id. Return 1 when the desired state is wrong."""
     try:
         found = present_ids(connect_and_applist(sdb, tv))
@@ -132,14 +218,19 @@ def cmd_check(sdb: Path, tv: str, packages: tuple[str, ...], kept: tuple[str, ..
         if status == "present":
             problems += 1
         print(f"CHECK list=deactivate id={pkg} status={status}")
+    for row in removals:
+        status = "present" if row.app_id in found else "absent"
+        if status == "present":
+            problems += 1
+        print(f"CHECK list=remove id={row.app_id} status={status}")
     for pkg in kept:
         status = "present" if pkg in found else "absent"
         if status == "absent":
             problems += 1
         print(f"CHECK list=kept id={pkg} status={status}")
     print(
-        f"SUMMARY tv={tv} deactivate={len(packages)} kept={len(kept)} "
-        f"problems={problems}"
+        f"SUMMARY tv={tv} deactivate={len(packages)} remove={len(removals)} "
+        f"kept={len(kept)} problems={problems}"
     )
     return 1 if problems else 0
 
@@ -244,6 +335,72 @@ def cmd_deactivate(args: argparse.Namespace, packages: tuple[str, ...]) -> int:
     return 0
 
 
+def capture_staged(client, command: str, bind: str):
+    """Push a script, then source it. Direct injection of pkgcmd -u is closed."""
+    token = os.urandom(8).hex()
+    remote = PurePosixPath(f"/home/owner/share/tmp/sdk_tools/.un43-remove-{token}.sh")
+    with tempfile.TemporaryDirectory(prefix="un43-remove-") as directory:
+        local = Path(directory) / "remove.sh"
+        local.write_text(f"{command}\nrm -f {remote}\n", encoding="utf-8")
+        client.push(local, remote)
+    return client.capture(
+        f". {remote}",
+        callback_host=bind,
+        bind_host=bind,
+        timeout=60,
+    )
+
+
+def cmd_remove(args: argparse.Namespace, removals: tuple[Removal, ...], packages: tuple[str, ...], kept: tuple[str, ...]) -> int:
+    """Uninstall removed.txt as the developer user, then check the app list.
+
+    pkgcmd -u of a package that is already absent returns an error and does
+    not reinstall it. The check after the attempts is the result that matters.
+    """
+    source = args.tizenpwn / "src"
+    if not (source / "tizenpwn" / "sdb.py").is_file():
+        print(f"tizenpwn source not found at {source}", file=sys.stderr)
+        return 2
+    os.environ["SDB"] = str(args.sdb)
+    sys.path.insert(0, str(source))
+    from tizenpwn.sdb import SdbClient, SdbError
+
+    try:
+        client = SdbClient(args.sdb, args.tv, timeout=20)
+        client.connect()
+    except (SdbError, OSError) as error:
+        print(f"REMOVE tv={args.tv} status=unreachable error={error}")
+        return 2
+    failed = 0
+    for package, kind, app_ids in uninstall_groups(removals):
+        print(f"REMOVE package={package} type={kind} apps={','.join(app_ids)}", flush=True)
+        result = None
+        error = None
+        # This image sometimes closes the first injection while a package
+        # command is still finishing. One retry is the same command.
+        for _attempt in (1, 2):
+            try:
+                result = capture_staged(
+                    client,
+                    uninstall_shell(package, kind, app_ids),
+                    args.bind_host,
+                )
+                error = None
+                break
+            except SdbError as caught:
+                error = caught
+                time.sleep(1)
+        if error is not None or result is None:
+            failed += 1
+            print(f"REMOVE package={package} status=error error={error}", flush=True)
+            continue
+        print(result.output.strip(), flush=True)
+    code = cmd_check(args.sdb, args.tv, packages, kept, removals)
+    if code != 0:
+        return code
+    return 2 if failed else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Shared flags sit on each subcommand so `check --tv … --sdb …` works.
     common = argparse.ArgumentParser(add_help=False)
@@ -261,43 +418,71 @@ def build_parser() -> argparse.ArgumentParser:
         default=ROOT / "kept.txt",
         help="ids that must remain listed",
     )
+    common.add_argument(
+        "--removed",
+        type=Path,
+        default=ROOT / "removed.txt",
+        help="applist ids to uninstall",
+    )
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
     sub.add_parser("check", parents=[common], help="read the app list and report each id")
     off = sub.add_parser(
         "deactivate",
         parents=[common],
-        help="one-shot root deactivate",
+        help="one-shot root deactivate of packages.txt",
     )
     off.add_argument("--tizenpwn", type=Path, default=DEFAULT_TIZENPWN)
     off.add_argument("--bind-host", default=DEFAULT_BIND)
     off.add_argument("--accept-timeout", type=int, default=1200)
     off.add_argument("--agent-timeout", type=int, default=180)
+    uninstall = sub.add_parser(
+        "remove",
+        parents=[common],
+        help="uninstall removed.txt as the developer user",
+    )
+    uninstall.add_argument("--tizenpwn", type=Path, default=DEFAULT_TIZENPWN)
+    uninstall.add_argument("--bind-host", default=DEFAULT_BIND)
     return parser
 
 
-def overlapping(packages: tuple[str, ...], kept: tuple[str, ...]) -> list[str]:
-    """Ids that both lists name. Deactivate must not be asked to remove a kept id."""
-    banned = set(kept)
-    return [pkg for pkg in packages if pkg in banned]
+def list_conflicts(
+    packages: tuple[str, ...],
+    kept: tuple[str, ...],
+    removals: tuple[Removal, ...],
+) -> list[str]:
+    """Refuse a list that asks for two operations on one id, or touches a kept id."""
+    problems: list[str] = []
+    kept_ids = set(kept)
+    package_ids = set(packages)
+    both = [pkg for pkg in packages if pkg in kept_ids]
+    if both:
+        problems.append("in packages.txt and kept.txt: " + ", ".join(both))
+    for row in removals:
+        named = {row.app_id, row.package_id}
+        if named & kept_ids:
+            problems.append(f"removed id is kept: {row.app_id}")
+        if named & package_ids:
+            problems.append(f"removed id is also in packages.txt: {row.app_id}")
+    return problems
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     packages = load_ids(args.packages)
     kept = load_ids(args.kept)
+    removals = load_removals(args.removed)
     if not args.sdb.is_file():
         print(f"sdb not found at {args.sdb}", file=sys.stderr)
         return 2
-    overlap = overlapping(packages, kept)
-    if overlap:
-        print(
-            "refusing: ids are in both packages.txt and kept.txt: " + ", ".join(overlap),
-            file=sys.stderr,
-        )
+    conflicts = list_conflicts(packages, kept, removals)
+    if conflicts:
+        print("refusing: " + "; ".join(conflicts), file=sys.stderr)
         return 2
     if args.action == "check":
-        return cmd_check(args.sdb, args.tv, packages, kept)
+        return cmd_check(args.sdb, args.tv, packages, kept, removals)
+    if args.action == "remove":
+        return cmd_remove(args, removals, packages, kept)
     return cmd_deactivate(args, packages)
 
 

@@ -2,7 +2,9 @@
 
 Notes and scripts for one Samsung UN43TU7000FXZC (2020 7 Series, 43-inch) running firmware `T-KTSU2AKUC-2743.0`. The work takes ad, ACR, analytics, and Pisa packages off the app list, including the home-screen ad package `com.samsung.tv.coba.adagent`.
 
-The operation is **deactivate** (`pkgcmd -D`). It is not uninstall (`pkgcmd -u`). Deactivate leaves the install directory on disk. The same id can be turned back on with `pkgcmd -A`. There is no package backup on this TV, so this repository does not uninstall `org.tizen.*` or `com.samsung.*` packages.
+`packages.txt` is **deactivate** (`pkgcmd -D`). Deactivate leaves the install directory on disk. The same id can be turned back on with `pkgcmd -A`. There is no package backup on this TV, so that list does not uninstall `org.tizen.*` or `com.samsung.*` packages.
+
+`removed.txt` is **uninstall** (`pkgcmd -u`). AirPlay is on that list. Deactivate left it on disk, and a boot listed the native package again. The Apple AirPlay widget is not a preload. `com.samsung.tv.airplay-app` is a removable preload, so a later boot may copy that one package back. `python3 scripts/tv_debloat.py remove` uninstalls the list again. It does not uninstall the rest of `com.samsung.*`.
 
 A firmware update, Smart Hub reset, or factory reset can put the preloaded packages back. After any of those, run the check again.
 
@@ -47,8 +49,9 @@ Checked with `scripts/tv_debloat.py check` against `sdb shell 0 applist`. Instal
 | `com.samsung.tv.preview-downloader` | Preview download | deactivated, directory kept |
 | `com.samsung.tv.preview-updater` | Preview update | deactivated, directory kept |
 | `com.samsung.tv.contents-recognition-dbmgr` | Content-recognition database | deactivated, directory kept |
-| `NRi6kdBYJ0` | AirPlay web app | deactivated, directory kept |
-| `com.samsung.tv.airplay-app` | AirPlay | deactivated, directory kept |
+| `NRi6kdBYJ0.AirPlayWebApp` | Apple AirPlay web app, package `NRi6kdBYJ0`, type `wgt` | uninstalled. In `removed.txt`. Directory removed |
+| `com.samsung.tv.airplay-app` | AirPlay app, type `tpk` | uninstalled. In `removed.txt`. Removable preload, so a boot may copy it back |
+| `com.samsung.tv.airplay-service` | AirPlay service inside `com.samsung.tv.airplay-app` | uninstalled with that package. Listed in `removed.txt` so check sees it |
 | `com.samsung.tv.context-aware-agent` | Context-aware agent | deactivated, directory kept |
 | `com.samsung.tv.slive-daemon` | Samsung TV Plus daemon | deactivated. The picture is `org.tizen.tv-viewer`, which stays |
 | `org.tizen.hbbtv` | HbbTV | deactivated, directory kept |
@@ -60,7 +63,7 @@ Checked with `scripts/tv_debloat.py check` against `sdb shell 0 applist`. Instal
 
 A power cycle can list some of these ids again. On 2026-11-08 it listed the ad packages, `com.samsung.tv.airplay-app`, and `com.samsung.tv.slive-daemon`. `pkgcmd -D -t tpk -n <id> --global` as the developer user turned them off again, with no Remote PC click. `com.samsung.tv.adagent-service` and `org.tizen.pisa-control-service` returned exit 25 on their own and left the list with `pisa-service`. Run `python3 scripts/tv_debloat.py check` after a later boot. `com.samsung.tv.preview-downloader` stayed off, and a caller still tries to launch it about every 5 seconds. The launch fails.
 
-One store package was uninstalled earlier, and only that one: `WykOS4t4F0` (`WykOS4t4F0.cmsWebApp`) via `sdb uninstall`. That is not what `packages.txt` does.
+One store package was uninstalled earlier, and it is not in either list: `WykOS4t4F0` (`WykOS4t4F0.cmsWebApp`) via `sdb uninstall`. AirPlay is the uninstall list. See `removed.txt`.
 
 ## What stays
 
@@ -128,7 +131,17 @@ Defaults are this LAN: TV `<tv-ip>`, SDB `~/local/tv-tools/sdb/data/tools/sdb`. 
 python3 scripts/tv_debloat.py check --tv <tv-ip> --sdb /path/to/sdb
 ```
 
-The command prints one line per id. `list=deactivate` should be `absent`. `list=kept` should be `present`. Exit 0 means that is true. Exit 1 means a deactivated id came back or a kept id disappeared. Exit 2 means the app list could not be read.
+The command prints one line per id. `list=deactivate` and `list=remove` should be `absent`. `list=kept` should be `present`. Exit 0 means that is true. Exit 1 means a removed or deactivated id came back, or a kept id disappeared. Exit 2 means the app list could not be read.
+
+## Remove AirPlay
+
+No Remote PC session. Developer mode has to name this PC. The command runs `pkgcmd -u` as the developer user for each package in `removed.txt`, then runs the same check:
+
+```bash
+python3 scripts/tv_debloat.py remove
+```
+
+A package that is already gone makes `pkgcmd -u` print an error and does not come back from that command. The check after it is the result. Run it again when a boot has copied the AirPlay preload back and `check` reports that id present.
 
 The PC in this lab also runs `~/.config/bash_custom/scripts/telemetry-probe.sh` once a day. That script calls this check and records the lines. A TV that is off does not fail the PC job.
 
@@ -173,8 +186,9 @@ This set has emitted two SMB share listings for one click, about six seconds apa
 
 ```text
 packages.txt                 ids to deactivate, including coba.adagent
+removed.txt                  AirPlay ids to uninstall
 kept.txt                     Home and the other screens that must stay listed
-scripts/tv_debloat.py        check and deactivate
+scripts/tv_debloat.py        check, deactivate, and remove
 scripts/supervise.py         terminal gate for an unattended session
 scripts/session/watch-login.sh
 scripts/session/arm-click.sh
