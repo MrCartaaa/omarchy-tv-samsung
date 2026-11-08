@@ -25,7 +25,7 @@ A few things are still the stock TV. The physical Home button, pressed inside Ne
 - [If you are going to run this](#if-you-are-going-to-run-this) is the short path, with the files each step uses.
 - [Deactivate, do not uninstall](#deactivate-do-not-uninstall) is the safety rule for the lists below.
 - [Where the work stands](#where-the-work-stands) is the scorecard: done, partial, and still open.
-- [The television](#the-television) is the model, firmware, and the addresses used on this LAN.
+- [The television](#the-television) is the model and the firmware.
 - [What left the app list](#what-left-the-app-list) is every id that was turned off or removed, and why.
 - [What stays](#what-stays) is Netflix, Spotify, Prime Video, the store, and the Samsung menus that have to remain.
 - [Repositories this work depends on](#repositories-this-work-depends-on) is the other projects, and the commit that was actually used.
@@ -43,7 +43,7 @@ Confirm the model code on the TV before you run anything. A different Samsung ye
 
 1. Read [The television](#the-television) and match the model and the firmware label.
 2. Read [Deactivate, do not uninstall](#deactivate-do-not-uninstall). The turn-off list is [packages.txt](packages.txt). The delete list is [removed.txt](removed.txt), and it is AirPlay only. The keep list is [kept.txt](kept.txt).
-3. Connect a PC with Samsung's SDB tool. [Check the list](#check-the-list) is `python3 scripts/tv_debloat.py check`. It only reads.
+3. Connect a PC with Samsung's SDB tool. [Check the list](#check-the-list) is `python3 scripts/tv_debloat.py check --tv <tv-ip> --sdb /path/to/sdb`. It only reads. The television's address and this computer's address stay on that computer.
 4. The first turn-off needs someone at the TV. Follow [Repeat a deactivate](#repeat-a-deactivate). The root tool is [rackrot/tizenpwn](https://github.com/rackrot/tizenpwn) plus [patches/tizenpwn-un43-allowlist.patch](patches/tizenpwn-un43-allowlist.patch), which adds this 43-inch model to a tool that otherwise names the 65-inch only.
 5. Install the home screen from [docs/omarchytv.md](docs/omarchytv.md). The widget changes are [patches/omarchytv-un43.patch](patches/omarchytv-un43.patch). The certificate is created for that TV and is not in this repository.
 6. After each power-on, source [scripts/session/omarchy-exit-hook.sh](scripts/session/omarchy-exit-hook.sh) once. That script is what sends Exit and the TV Plus button back to the dock, and what ignores the volume rocker. A second source leaves the running copy in place. The PC timer does not start this script.
@@ -111,12 +111,10 @@ The volume rocker stays in the app that is already open. On this set it inserts 
 | Tizen | 5.5.0, armv7l |
 | Kernel | 4.1.10 |
 | SDB | 4.2.36, serial `UN43TU7000FXZC`, port 26101 |
-| DUID | <duid> |
-| Wired MAC | <wired-mac> |
 
 `sdb capability` on this image reports `sdbd_rootperm: disabled`, `intershell: disabled`, `rootonoff_support: disabled`, and `pkgcmd_debugmode: enabled`. `sdb shell id` and `sdb shell 0 pkgcmd -l` return empty. `sdb shell 0 applist` works and is the check this repo uses.
 
-On the network where this was done, the TV was `<tv-ip>` and the developer-mode host was `<pc-ip>`. Those are private addresses for that LAN. Another network uses its own addresses. Developer mode must list the PC that opens SDB, and the CIFS lab must bind that same PC address.
+Developer mode must list the PC that opens SDB, and the CIFS lab must bind that same PC address. This repository does not record the television's address, the computer's address, the wired MAC, or the DUID. A certificate is created for the television you are signing, and that certificate stays on the computer.
 
 ## What left the app list
 
@@ -212,14 +210,10 @@ Use `-t app` when the id is an app inside another package. Netflix, Spotify, Pri
 From this repository, with SDB able to see the TV:
 
 ```bash
-python3 scripts/tv_debloat.py check
-```
-
-Defaults are this LAN: TV `<tv-ip>`, SDB `~/local/tv-tools/sdb/data/tools/sdb`. Override them when the addresses differ:
-
-```bash
 python3 scripts/tv_debloat.py check --tv <tv-ip> --sdb /path/to/sdb
 ```
+
+There is no default address in the script. Copy [local.env.example](local.env.example) to `local.env` if you want `TV_ADDR`, `BIND_HOST`, `SDB_BIN`, and `TIZENPWN` filled in on a computer you use yourself. `local.env` is gitignored. Do not commit it.
 
 The command prints one line per id. `list=deactivate` and `list=remove` should be `absent`. `list=kept` should be `present`. Exit 0 means that is true. Exit 1 means a removed or deactivated id came back, or a kept id disappeared. Exit 2 means the app list could not be read.
 
@@ -254,7 +248,7 @@ python3 -m tizenpwn --sdb /path/to/sdb cifs preflight <tv-ip>
 
 `Compatibility: tested` is the expected line. `dotnet lacks effective SETGID/SYS_ADMIN` is the archive-root failure. Do not retry archive-root with `--runtime`.
 
-5. Free TCP `3389` and `445` on the developer-host address. On this PC a Windows container (`local-container`) was publishing `3389`, and it had to be stopped for the lab and started again afterward. Binding `445` needs a process that may bind privileged ports. `tizenpwn` starts that lab in Docker.
+5. Free TCP `3389` and `445` on the developer-host address. A process already listening on `3389` has to be stopped for the lab and started again afterward. Binding `445` needs a process that may bind privileged ports. `tizenpwn` starts that lab in Docker.
 6. Allow inbound TCP from the TV to the PC. A default-deny firewall drops the SDB callback and the root agent's connection.
 7. In a terminal:
 
@@ -283,6 +277,7 @@ packages.txt                 ids to deactivate, including coba.adagent
 removed.txt                  AirPlay ids to uninstall
 kept.txt                     Home and the other screens that must stay listed
 scripts/tv_debloat.py        check, deactivate, remove, and settle
+local.env.example            optional local addresses, copied to gitignored local.env
 scripts/supervise.py         terminal gate for an unattended session
 scripts/session/watch-login.sh
 scripts/session/arm-click.sh

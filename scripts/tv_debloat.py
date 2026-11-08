@@ -60,11 +60,41 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TV = "<tv-ip>"
-DEFAULT_SDB = Path.home() / "local/tv-tools/sdb/data/tools/sdb"
-DEFAULT_TIZENPWN = Path.home() / "local/tv-tools/tizenpwn"
-DEFAULT_BIND = "<pc-ip>"
 RESULT_LOG = "/home/owner/share/tmp/debloat-result"
+
+
+def _untracked_env() -> dict[str, str]:
+    """Read gitignored local.env. Addresses stay on this computer."""
+    path = ROOT / "local.env"
+    found: dict[str, str] = {}
+    if not path.is_file():
+        return found
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        found[key.strip()] = value.strip().strip("\"'")
+    return found
+
+
+_LOCAL = _untracked_env()
+
+
+def _pick(*names: str) -> str | None:
+    for name in names:
+        chosen = os.environ.get(name) or _LOCAL.get(name)
+        if chosen:
+            return chosen
+    return None
+
+
+def _path_pick(*names: str) -> Path | None:
+    chosen = _pick(*names)
+    if not chosen:
+        return None
+    return Path(chosen)
+
 
 # Applist id -> extra package name that does not appear as its own app id.
 PACKAGE_ALIASES = {"adplatform.ADPlayer": "adplatform"}
@@ -487,8 +517,8 @@ def cmd_remove(args: argparse.Namespace, removals: tuple[Removal, ...], packages
 def build_parser() -> argparse.ArgumentParser:
     # Shared flags sit on each subcommand so `check --tv … --sdb …` works.
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--tv", default=DEFAULT_TV, help="TV LAN address")
-    common.add_argument("--sdb", type=Path, default=DEFAULT_SDB, help="path to sdb")
+    common.add_argument("--tv", default=_pick("TV_ADDR"), help="TV LAN address")
+    common.add_argument("--sdb", type=Path, default=_path_pick("SDB_BIN"), help="path to sdb")
     common.add_argument(
         "--packages",
         type=Path,
@@ -515,8 +545,8 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="one-shot root deactivate of packages.txt",
     )
-    off.add_argument("--tizenpwn", type=Path, default=DEFAULT_TIZENPWN)
-    off.add_argument("--bind-host", default=DEFAULT_BIND)
+    off.add_argument("--tizenpwn", type=Path, default=_path_pick("TIZENPWN"))
+    off.add_argument("--bind-host", default=_pick("BIND_HOST"))
     off.add_argument("--accept-timeout", type=int, default=1200)
     off.add_argument("--agent-timeout", type=int, default=180)
     uninstall = sub.add_parser(
@@ -524,15 +554,15 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="uninstall removed.txt as the developer user",
     )
-    uninstall.add_argument("--tizenpwn", type=Path, default=DEFAULT_TIZENPWN)
-    uninstall.add_argument("--bind-host", default=DEFAULT_BIND)
+    uninstall.add_argument("--tizenpwn", type=Path, default=_path_pick("TIZENPWN"))
+    uninstall.add_argument("--bind-host", default=_pick("BIND_HOST"))
     settle = sub.add_parser(
         "settle",
         parents=[common],
         help="re-disable packages a boot listed again, as the developer user",
     )
-    settle.add_argument("--tizenpwn", type=Path, default=DEFAULT_TIZENPWN)
-    settle.add_argument("--bind-host", default=DEFAULT_BIND)
+    settle.add_argument("--tizenpwn", type=Path, default=_path_pick("TIZENPWN"))
+    settle.add_argument("--bind-host", default=_pick("BIND_HOST"))
     return parser
 
 
@@ -559,6 +589,12 @@ def list_conflicts(
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if not args.tv or args.sdb is None:
+        print("pass --tv and --sdb", file=sys.stderr)
+        return 2
+    if args.action != "check" and (not args.bind_host or args.tizenpwn is None):
+        print("pass --bind-host and --tizenpwn", file=sys.stderr)
+        return 2
     packages = load_ids(args.packages)
     kept = load_ids(args.kept)
     removals = load_removals(args.removed)

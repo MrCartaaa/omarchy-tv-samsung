@@ -8,7 +8,7 @@ Upstream is [piermark/omarchytv](https://github.com/piermark/omarchytv). The bui
 
 - The published package is an HTML5 widget, package `OmarchyTV0`, app id `OmarchyTV0.OmarchyTV`, `required_version` 2.3, public privileges. It does not take the Home key.
 - The GitHub release file `OmarchyTV-tizen-2.14.0-unsigned.wgt` was downloaded. Its SHA-256 is `5d12bd2ad82098d674f0217d61d71adfb5dda62c0e996b04b337b2282a30977c`, which matches the release table. `tizen/INSTALL-TIZEN.md` prints a different hash, `5916dd07d8e20ec1fa78dd8f927dc63283d2899257a27c0eca4a91c79a391174`, and that hash is not this file.
-- The unsigned widget was refused with `Check certificate error [-12]`. A Samsung public author and distributor certificate for DUID `<duid>` was created in a local profile named `<profile>`. Those certificate files stay on the PC and are not in this repository.
+- The unsigned widget was refused with `Check certificate error [-12]`. A Samsung public author and distributor certificate for this television's DUID was created in a local signing profile. Those certificate files stay on the PC and are not in this repository.
 - Tizen Studio 6.0 CLI signed the unpacked widget with `tizen package -t wgt -s <profile>`. The certificate chain checked out as privilege level `PUBLIC`.
 - `pkgcmd -i -t wgt -p <file>` without `--global` copied the app under `/var/lib/empty/apps_rw` and failed with `Security error [-22]` (`Unexpected path` in `security_registration.cc`). The SDB command user on this set has that empty home. `pkgcmd -i -t wgt -p <file> --global` finished at 100 percent with `end ok`.
 - `sdb shell 0 applist` lists `'OmarchyTV' 'OmarchyTV0.OmarchyTV'`. The staged widget was removed. `device-profile.xml` remains in `/home/owner/share/tmp/sdk_tools/`.
@@ -47,7 +47,7 @@ It does five things:
 - `aul_test launch OmarchyTV0.OmarchyTV omarchy_nav home` on the running process reads `omarchy_nav=home` and calls `OMARCHY_GO_HOME`. `reload` is `disable` on the main and `eden_resume` app-controls, so that launch does not load the page again.
 - `tizen:category` is `http://tizen.org/category/tv`. The Apps grid on this set still does not list the widget.
 
-Another UN43TU7000 uses its own DUID. The certificate that signed this set is for `<duid>` and is not in the repository.
+Another UN43TU7000 uses its own DUID. The certificate that signed this set is not in the repository.
 
 1. Download `OmarchyTV-tizen-2.14.0-unsigned.wgt` from the `v2.14.0-beta` release. Its SHA-256 must be `5d12bd2ad82098d674f0217d61d71adfb5dda62c0e996b04b337b2282a30977c`.
 2. Unpack it. `app.js` is in the top directory of the archive.
