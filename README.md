@@ -1,10 +1,58 @@
 # UN43TU7000FXZC debloat
 
-Notes and scripts for one Samsung UN43TU7000FXZC (2020 7 Series, 43-inch) running firmware `T-KTSU2AKUC-2743.0`. The work takes ad, ACR, analytics, and Pisa packages off the app list, including the home-screen ad package `com.samsung.tv.coba.adagent`.
+This is a write-up of one Samsung television and the scripts that put it in the state described here. The set is a 2020 7 Series, 43 inches, model code UN43TU7000FXZC. It runs Tizen 5.5, which is Samsung's smart-TV system, on firmware `T-KTSU2AKUC-2743.0`.
 
-`packages.txt` is **deactivate** (`pkgcmd -D`). Deactivate leaves the install directory on disk. The same id can be turned back on with `pkgcmd -A`. There is no package backup on this TV, so that list does not uninstall `org.tizen.*` or `com.samsung.*` packages.
+Out of the box the set shows Samsung's own screens, plays ads around them, and keeps background programs that recognize what is on screen and report usage. The work on this TV turned those programs off, removed AirPlay, and installed a different front page called OmarchyTV. Netflix, Spotify, Prime Video, and the Samsung app store stayed.
 
-`removed.txt` is **uninstall** (`pkgcmd -u`). AirPlay is on that list. Deactivate left it on disk, and a boot listed the native package again. The Apple AirPlay widget is not a preload. `com.samsung.tv.airplay-app` is a removable preload, so a later boot may copy that one package back. `python3 scripts/tv_debloat.py remove` uninstalls the list again. It does not uninstall the rest of `com.samsung.*`.
+Nothing here flashes new firmware. The step that needs root is one click at the TV, from a PC. No root program was left running on the set.
+
+## What you will see on the TV
+
+OmarchyTV is the front page. Its dock is three tiles: Netflix, Spotify, and Prime Video. The top-right corner opens this set's own Bluetooth, Internet, network, and volume screens.
+
+Exit, from a show or from live TV, comes back to that dock. The OmarchyTV process was already running. The remote's Samsung TV Plus button opens Samsung's guide, and the same path brings the dock back. The volume rocker changes the volume and leaves you in the show. On the dock it changes the volume and the page stays still.
+
+A few things are still the stock TV. The physical Home button, pressed inside Netflix, does not open the dock. The Source button does not open OmarchyTV's second page. Power-on still shows Samsung's picture for a moment before the dock. If OmarchyTV crashes, nothing starts it again. Those rows are marked open in [Where the work stands](#where-the-work-stands).
+
+## On this page
+
+- [What you will see on the TV](#what-you-will-see-on-the-tv) is the result, without the package names.
+- [If you are going to run this](#if-you-are-going-to-run-this) is the short path, with the files each step uses.
+- [Deactivate, do not uninstall](#deactivate-do-not-uninstall) is the safety rule for the lists below.
+- [Where the work stands](#where-the-work-stands) is the scorecard: done, partial, and still open.
+- [The television](#the-television) is the model, firmware, and the addresses used on this LAN.
+- [What left the app list](#what-left-the-app-list) is every id that was turned off or removed, and why.
+- [What stays](#what-stays) is Netflix, Spotify, Prime Video, the store, and the Samsung menus that have to remain.
+- [Repositories this work depends on](#repositories-this-work-depends-on) is the other projects, and the commit that was actually used.
+- [pkgcmd on this firmware](#pkgcmd-on-this-firmware) is how this Tizen version turns a package off.
+- [Check the list](#check-the-list) reads the TV and compares it with the files in this repo.
+- [Remove AirPlay](#remove-airplay) uninstalls AirPlay, and covers the boot job that puts the turned-off ids back.
+- [Repeat a deactivate](#repeat-a-deactivate) is the one-time root click, done at the TV.
+- [Layout](#layout) is the file tree.
+- [docs/omarchytv.md](docs/omarchytv.md) is the home-screen install: the certificate, the widget patch, Exit, and the volume rocker.
+
+## If you are going to run this
+
+Confirm the model code on the TV before you run anything. A different Samsung year or size is a different firmware, and these lists were checked on this image only.
+
+1. Read [The television](#the-television) and match the model and the firmware label.
+2. Read [Deactivate, do not uninstall](#deactivate-do-not-uninstall). The turn-off list is [packages.txt](packages.txt). The delete list is [removed.txt](removed.txt), and it is AirPlay only. The keep list is [kept.txt](kept.txt).
+3. Connect a PC with Samsung's SDB tool. [Check the list](#check-the-list) is `python3 scripts/tv_debloat.py check`. It only reads.
+4. The first turn-off needs someone at the TV. Follow [Repeat a deactivate](#repeat-a-deactivate). The root tool is [rackrot/tizenpwn](https://github.com/rackrot/tizenpwn) plus [patches/tizenpwn-un43-allowlist.patch](patches/tizenpwn-un43-allowlist.patch), which adds this 43-inch model to a tool that otherwise names the 65-inch only.
+5. Install the home screen from [docs/omarchytv.md](docs/omarchytv.md). The widget changes are [patches/omarchytv-un43.patch](patches/omarchytv-un43.patch). The certificate is created for that TV and is not in this repository.
+6. After each power-on, source [scripts/session/omarchy-exit-hook.sh](scripts/session/omarchy-exit-hook.sh) once. That script is what sends Exit and the TV Plus button back to the dock, and what ignores the volume rocker. A second source leaves the running copy in place.
+
+A later boot can turn some of the ad packages back on, and it can copy the AirPlay package back. [Remove AirPlay](#remove-airplay) includes `settle`, which puts the lists back without another root click while the PC is on.
+
+## Deactivate, do not uninstall
+
+Most of the cleanup turns a package off. It does not delete it.
+
+[packages.txt](packages.txt) is **deactivate** (`pkgcmd -D`). Deactivate leaves the install directory on disk. The same id can be turned back on with `pkgcmd -A`. There is no package backup on this TV, so that list does not uninstall `org.tizen.*` or `com.samsung.*` packages. Those names are Samsung's own system. Deleting one of them can take the picture or the menus with it, and the way back is a factory reset or a USB firmware reflash.
+
+[removed.txt](removed.txt) is **uninstall** (`pkgcmd -u`). AirPlay is the only group on that list. Deactivate left it on disk, and a boot listed the native package again. The Apple AirPlay widget is not a preload. `com.samsung.tv.airplay-app` is a removable preload, so a later boot may copy that one package back. `python3 scripts/tv_debloat.py remove` uninstalls the list again. It does not uninstall the rest of `com.samsung.*`.
+
+The picture itself is `org.tizen.tv-viewer`. It stays. Exit works by noticing that picture and bringing OmarchyTV forward. Removing the picture removes the screen.
 
 A firmware update, Smart Hub reset, or factory reset can put the preloaded packages back. After any of those, run the check again.
 
