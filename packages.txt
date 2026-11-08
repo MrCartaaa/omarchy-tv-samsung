@@ -14,3 +14,15 @@ com.samsung.tv.pisa-service
 org.tizen.pisa-control-service
 com.samsung.tv.vd-sc-client-service
 com.samsung.tv.coba.adagent
+org.tizen.rm-survey
+com.samsung.tv.preview-downloader
+com.samsung.tv.preview-updater
+com.samsung.tv.contents-recognition-dbmgr
+NRi6kdBYJ0
+com.samsung.tv.airplay-app
+com.samsung.tv.context-aware-agent
+com.samsung.tv.slive-daemon
+org.tizen.hbbtv
+org.tizen.hbbtv-service
+ug-hbbtv-efl
+com.samsung.tv.csfs

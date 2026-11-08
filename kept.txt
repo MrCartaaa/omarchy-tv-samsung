@@ -1,5 +1,7 @@
 # These stay listed. check reports them so a later run can see if Home moved.
 # com.samsung.tv.coba.adagent is not in this file. It is in packages.txt.
+# Netflix, Spotify, Prime Video, and the store are the default apps.
+# The store stays so more apps can be installed. They are not required removals.
 
 com.samsung.tv.coba.home
 com.samsung.tv.coba.source
@@ -8,3 +10,8 @@ com.samsung.tv.coba.setting
 com.samsung.tv.coba.livetv
 com.samsung.tv.coba.search
 tv6pbVMQFF.PrivacyChoices
+org.tizen.netflix-app
+com.samsung.tv.store
+rJeHak5zRg.Spotify
+rJeHak5zRg.SpotifyService
+org.tizen.primevideo

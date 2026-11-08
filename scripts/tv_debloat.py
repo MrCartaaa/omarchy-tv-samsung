@@ -276,12 +276,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def overlapping(packages: tuple[str, ...], kept: tuple[str, ...]) -> list[str]:
+    """Ids that both lists name. Deactivate must not be asked to remove a kept id."""
+    banned = set(kept)
+    return [pkg for pkg in packages if pkg in banned]
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     packages = load_ids(args.packages)
     kept = load_ids(args.kept)
     if not args.sdb.is_file():
         print(f"sdb not found at {args.sdb}", file=sys.stderr)
+        return 2
+    overlap = overlapping(packages, kept)
+    if overlap:
+        print(
+            "refusing: ids are in both packages.txt and kept.txt: " + ", ".join(overlap),
+            file=sys.stderr,
+        )
         return 2
     if args.action == "check":
         return cmd_check(args.sdb, args.tv, packages, kept)

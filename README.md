@@ -43,14 +43,28 @@ Checked with `scripts/tv_debloat.py check` against `sdb shell 0 applist`. Instal
 | `org.tizen.pisa-control-service` | Pisa control | direct `pkgcmd` returned exit 25. The id then left the app list with `pisa-service` |
 | `com.samsung.tv.vd-sc-client-service` | Viewing-data client | deactivated, directory kept |
 | `com.samsung.tv.coba.adagent` | Home-screen ad library (`Com.Samsung.TV.CoBA.Advertise.dll`) | deactivated. Its own package. Directory `/opt/usr/apps/com.samsung.tv.coba.adagent` kept |
+| `org.tizen.rm-survey` | Remote-management survey | deactivated, directory kept |
+| `com.samsung.tv.preview-downloader` | Preview download | deactivated, directory kept |
+| `com.samsung.tv.preview-updater` | Preview update | deactivated, directory kept |
+| `com.samsung.tv.contents-recognition-dbmgr` | Content-recognition database | deactivated, directory kept |
+| `NRi6kdBYJ0` | AirPlay web app | deactivated, directory kept |
+| `com.samsung.tv.airplay-app` | AirPlay | deactivated, directory kept |
+| `com.samsung.tv.context-aware-agent` | Context-aware agent | deactivated, directory kept |
+| `com.samsung.tv.slive-daemon` | Samsung TV Plus daemon | deactivated. The picture is `org.tizen.tv-viewer`, which stays |
+| `org.tizen.hbbtv` | HbbTV | deactivated, directory kept |
+| `org.tizen.hbbtv-service` | HbbTV service | deactivated, directory kept |
+| `ug-hbbtv-efl` | HbbTV UI | deactivated, directory kept |
+| `com.samsung.tv.csfs` | Samsung tile home | deactivated. `com.samsung.tv.coba.home` stays |
 
 `com.samsung.tv.coba.adagent` is the only CoBA package in the deactivate list. Home, Source, Apps, Search, Settings, and Live TV are separate packages and stay listed. See `kept.txt`.
+
+A power cycle can list some of these ids again. On 2026-11-08 it listed the ad packages, `com.samsung.tv.airplay-app`, and `com.samsung.tv.slive-daemon`. `pkgcmd -D -t tpk -n <id> --global` as the developer user turned them off again, with no Remote PC click. `com.samsung.tv.adagent-service` and `org.tizen.pisa-control-service` returned exit 25 on their own and left the list with `pisa-service`. Run `python3 scripts/tv_debloat.py check` after a later boot. `com.samsung.tv.preview-downloader` stayed off, and a caller still tries to launch it about every 5 seconds. The launch fails.
 
 One store package was uninstalled earlier, and only that one: `WykOS4t4F0` (`WykOS4t4F0.cmsWebApp`) via `sdb uninstall`. That is not what `packages.txt` does.
 
 ## What stays
 
-Streaming apps, the store, the browser, DRM, and Privacy Choices stay. So do `com.samsung.tv.coba.home`, `com.samsung.tv.coba.source`, `com.samsung.tv.coba.apps`, `com.samsung.tv.coba.search`, `com.samsung.tv.coba.setting`, and `com.samsung.tv.coba.livetv`.
+The default apps stay, and they are named in `kept.txt`: `org.tizen.netflix-app`, `rJeHak5zRg.Spotify`, `rJeHak5zRg.SpotifyService`, `org.tizen.primevideo`, and `com.samsung.tv.store`. The store stays so more apps can be installed. That is a default, not a required removal. The browser, DRM, and Privacy Choices stay. So do `com.samsung.tv.coba.home`, `com.samsung.tv.coba.source`, `com.samsung.tv.coba.apps`, `com.samsung.tv.coba.search`, `com.samsung.tv.coba.setting`, and `com.samsung.tv.coba.livetv`. `org.tizen.tv-viewer` stays. It is the picture.
 
 Do not apply an S90C profile, `s90c.json`, or a script that uninstalls every `com.samsung.*` id. Do not flash firmware.
 
@@ -63,7 +77,7 @@ Do not apply an S90C profile, `s90c.json`, or a script that uninstalls every `co
 | Samsung SDB | `applist` and the tizenpwn transport. | `4.2.36` ubuntu-64 |
 | [DemonKingSwarn/samsung-tv-tizen-root](https://github.com/DemonKingSwarn/samsung-tv-tizen-root) `docs/DEBLOAT.md` | The idea of `pkgcmd -D` instead of uninstall. Written for a Tizen 9 QA55, not this image. | docs only, not that repo's apply script |
 | [ardazeytin/samsung-tizen-tv-debloat](https://github.com/ardazeytin/samsung-tizen-tv-debloat) | The constraint against `sdb uninstall` of `org.tizen.*` and `com.samsung.*`. | not applied as a profile |
-| [piermark/omarchytv](https://github.com/piermark/omarchytv) | Not installed. See [docs/omarchytv.md](docs/omarchytv.md). | `v2.14.0-beta` inspected, not downloaded |
+| [piermark/omarchytv](https://github.com/piermark/omarchytv) | Installed as a normal app. See [docs/omarchytv.md](docs/omarchytv.md). | `v2.14.0-beta`, signed locally |
 
 `tizenpwn` as published accepts `UN65TU7000FXZA` only. This 43-inch set uses the same build id, and the four reviewed helper files matched that commit's hashes:
 
@@ -98,7 +112,7 @@ Re-enable one id:
 pkgcmd -A -t tpk -n <id> --global
 ```
 
-Use `-t app` when the id is an app inside another package. That restore has not been run on this TV.
+Use `-t app` when the id is an app inside another package. Netflix, Spotify, Prime Video, and the store were turned back on with `pkgcmd -A` after a mistaken deactivate. The ids in `packages.txt` have not been restored.
 
 ## Check the list
 
@@ -164,8 +178,9 @@ scripts/tv_debloat.py        check and deactivate
 scripts/supervise.py         terminal gate for an unattended session
 scripts/session/watch-login.sh
 scripts/session/arm-click.sh
+scripts/session/omarchy-exit-hook.sh
 patches/tizenpwn-un43-allowlist.patch
-docs/omarchytv.md            installed as an app; Home was not changed
+docs/omarchytv.md            install notes and the Exit hook
 ```
 
-OmarchyTV is installed as app id `OmarchyTV0.OmarchyTV`. It is not part of the deactivate command, and it is not the Home screen. Open it from the Apps list. The install notes are in [docs/omarchytv.md](docs/omarchytv.md).
+OmarchyTV is installed as app id `OmarchyTV0.OmarchyTV`. It is not part of the deactivate command. `db/first_screen/type` is `OmarchyTV0.OmarchyTV`. The tile page `com.samsung.tv.csfs` is deactivated, so there is no Samsung tile home, and this sideloaded widget does not appear in the Apps grid. Exit from the live picture raises the same OmarchyTV process. The hook that does that is [scripts/session/omarchy-exit-hook.sh](scripts/session/omarchy-exit-hook.sh). It has to be sourced after each power-on. The physical Home key is still taken by the platform before that script can see it. The install notes are in [docs/omarchytv.md](docs/omarchytv.md).
