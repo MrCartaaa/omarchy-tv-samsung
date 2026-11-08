@@ -1,0 +1,317 @@
+# UN43TU7000 changes for piermark/omarchytv v2.14.0-beta.
+# Unpack OmarchyTV-tizen-2.14.0-unsigned.wgt, then:
+#   patch -p1 -d <unpacked-widget> < patches/omarchytv-un43.patch
+# The unsigned widget SHA-256 is
+# 5d12bd2ad82098d674f0217d61d71adfb5dda62c0e996b04b337b2282a30977c
+# This file does not contain a certificate, a signed widget, or a device profile.
+
+diff -ruN a/app.js b/app.js
+--- a/app.js	2026-11-08 10:58:49.318515635 -0500
++++ b/app.js	2026-11-08 10:58:49.319983490 -0500
+@@ -12,7 +12,7 @@
+   var STRINGS = {
+     en: {
+       menu_plugins: "Plugins", menu_apps: "Apps", menu_setup: "Setup", menu_terminal: "Terminal", menu_hint: "↑↓ select   OK open   Back close",
+-      tip_cinemarchy: "Cinemarchy (Media & TV)", tip_wifi: "Wi-Fi & network", tip_bt: "Bluetooth", tip_vol: "Audio", tip_inputs: "Inputs (TV / HDMI)", tip_saver: "Start screensaver",
++      tip_cinemarchy: "Cinemarchy (Media & TV)", tip_wifi: "Wi-Fi & network", tip_bt: "Bluetooth", tip_internet: "Internet", tip_net: "Network", tip_vol: "Volume", tip_inputs: "Inputs (TV / HDMI)", tip_saver: "Start screensaver",
+       sys_clock: "Clock",
+       box_weather: "weather", box_pc: "omarchy · pc", box_ai: "ai credits · pc", box_tv: "tv", box_app: "app", box_ws_pc: "pc", box_system: "system",
+       term_theme: "theme ", term_net: "net ", term_up: "up ",
+@@ -141,7 +141,7 @@
+     },
+     it: {
+       menu_plugins: "Plugin", menu_apps: "App", menu_setup: "Impostazioni", menu_terminal: "Terminale", menu_hint: "↑↓ seleziona   OK apri   Indietro chiudi",
+-      tip_cinemarchy: "Cinemarchy (Media e TV)", tip_wifi: "Wi-Fi e rete", tip_bt: "Bluetooth", tip_vol: "Audio", tip_inputs: "Ingressi (TV / HDMI)", tip_saver: "Avvia salvaschermo",
++      tip_cinemarchy: "Cinemarchy (Media e TV)", tip_wifi: "Wi-Fi e rete", tip_bt: "Bluetooth", tip_internet: "Internet", tip_net: "Rete", tip_vol: "Volume", tip_inputs: "Ingressi (TV / HDMI)", tip_saver: "Avvia salvaschermo",
+       sys_clock: "Orologio",
+       box_weather: "meteo", box_pc: "omarchy · pc", box_ai: "crediti ia · pc", box_tv: "tv", box_app: "app", box_ws_pc: "pc", box_system: "sistema",
+       term_theme: "tema ", term_net: "rete ", term_up: "up ",
+@@ -270,7 +270,7 @@
+     },
+     de: {
+       menu_plugins: "Plugins", menu_apps: "Apps", menu_setup: "Einrichtung", menu_terminal: "Terminal", menu_hint: "↑↓ auswählen   OK öffnen   Zurück schließen",
+-      tip_cinemarchy: "Cinemarchy (Medien & TV)", tip_wifi: "WLAN & Netzwerk", tip_bt: "Bluetooth", tip_vol: "Audio", tip_inputs: "Eingänge (TV / HDMI)", tip_saver: "Bildschirmschoner starten",
++      tip_cinemarchy: "Cinemarchy (Medien & TV)", tip_wifi: "WLAN & Netzwerk", tip_bt: "Bluetooth", tip_internet: "Internet", tip_net: "Netzwerk", tip_vol: "Lautstärke", tip_inputs: "Eingänge (TV / HDMI)", tip_saver: "Bildschirmschoner starten",
+       sys_clock: "Uhr",
+       box_weather: "wetter", box_pc: "omarchy · pc", box_ai: "ki-guthaben · pc", box_tv: "tv", box_app: "app", box_ws_pc: "pc", box_system: "system",
+       term_theme: "thema ", term_net: "netz ", term_up: "up ",
+@@ -1183,7 +1183,7 @@
+ 
+     var tip = document.getElementById("bar-tip");
+     if (state.zone === "bar" && state.barIdx >= 6) {
+-      var tipKeys = ["tip_cinemarchy", "", "tip_wifi", "tip_bt", "tip_vol", "tip_inputs", "tip_saver"];
++      var tipKeys = ["tip_cinemarchy", "", "tip_bt", "tip_internet", "tip_net", "tip_vol", "tip_inputs", "tip_saver"];
+       tip.textContent = state.barIdx === 7 ? "OmarchyTV Arcade" : tr(tipKeys[state.barIdx - 6] || "tip_saver");   // a product name, the same in every language
+       tip.style.display = "block";
+     } else {
+@@ -2376,6 +2376,7 @@
+       if (window.tizen && window.tizen.application && window.tizen.ApplicationControl) {
+         var ac = new window.tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", null, null, null,
+           [new window.tizen.ApplicationControlData("PAYLOAD", ['{"values":"v=' + id + '"}'])]);
++        if (window.OMARCHY_NOTE_LEAVE) window.OMARCHY_NOTE_LEAVE();
+         window.tizen.application.launchAppControl(ac, "111299001912", null, function () { window.tizen.application.launch("111299001912"); });
+         return;
+       }
+@@ -2806,6 +2807,7 @@
+         var tzId = app.tizenId || (window.OMARCHY_TIZEN_IDS || {})[app.id];
+         if (!tzId) { showToast(app.name + " is not available on this TV"); return; }
+         try {
++          if (window.OMARCHY_NOTE_LEAVE) window.OMARCHY_NOTE_LEAVE();
+           window.tizen.application.launch(tzId, null, function (err) {
+             showToast("Could not open " + app.name + ": " + ((err && (err.message || err.name)) || "launch failed"));
+           });
+@@ -2833,6 +2835,37 @@
+     renderAll();
+   }
+ 
++  // The TV Exit key can hide this page and leave it running. Show the dock again
++  // in that same process instead of loading the app from scratch.
++  window.OMARCHY_GO_HOME = function () {
++    if (state.movingId) finishMove(false);
++    if (state.embedOpen) closeEmbed();
++    if (state.modalOpen) closeModal();
++    if (state.ws !== 0) switchWorkspace(0);
++  };
++
++  // The remote Home key is delivered as an app-control on the already-running
++  // process: aul_test launch … omarchy_nav home. reload=disable keeps this page.
++  window.OMARCHY_APPLY_NAV = function () {
++    var req, data, i, item, value;
++    try {
++      req = window.tizen.application.getCurrentApplication().getRequestedAppControl();
++      data = req && req.appControl && req.appControl.data;
++    } catch (err) { return; }
++    if (!data || !data.length) return;
++    for (i = 0; i < data.length; i++) {
++      item = data[i];
++      if (!item || item.key !== "omarchy_nav") continue;
++      value = item.value && item.value.join ? item.value[0] : item.value;
++      if (value === "home") {
++        window.OMARCHY_GO_HOME();
++        try { console.log("OMARCHY_NAV_HOME"); } catch (err) {}
++      }
++    }
++  };
++  window.addEventListener("appcontrol", window.OMARCHY_APPLY_NAV);
++  window.OMARCHY_APPLY_NAV();
++
+ 
+   // Grok Bot companion avatar, webOS/Tizen: Tom Ballard's shapes, palette and eyes (MIT, vendored from
+   // his Agent Desktop v0.2.0, see vendor/grokbot/) drawn by companion.js. The motion follows
+@@ -2985,6 +3018,7 @@
+     try {
+       if (lunaLaunch("com.webos.app.browser", { target: url })) return;
+       if (window.tizen && window.tizen.ApplicationControl) {
++        if (window.OMARCHY_NOTE_LEAVE) window.OMARCHY_NOTE_LEAVE();
+         window.tizen.application.launchAppControl(new window.tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", url), null, null, null);
+         return;
+       }
+@@ -2995,6 +3029,7 @@
+     try {
+       if (lunaLaunch("com.webos.app.browser", { target: url })) return;
+       if (window.tizen && window.tizen.ApplicationControl) {
++        if (window.OMARCHY_NOTE_LEAVE) window.OMARCHY_NOTE_LEAVE();
+         window.tizen.application.launchAppControl(new window.tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", url), null, null, null);
+         return;
+       }
+@@ -3593,14 +3628,23 @@
+     if (state.modalOpen) renderModalList();
+   }
+ 
++  // Top-right cluster uses this set's own screens: Bluetooth speakers, the app
++  // labeled Internet, network setup, and the volume panel.
++  function openTvOption(name, id) {
++    launchApp({ name: name, appId: id, tizenId: id });
++  }
++
+   function activateBarItem(idx) {
+     if (idx === 0) openOmarchyMenu();
+     else if (idx >= 1 && idx <= 5) switchWorkspace(idx - 1);
+     else if (idx === 6) openCinemarchyModal(0);
+     else if (idx === 7) openArcade();   // v2.14: the Arcade icon next to Cinemarchy
+-    else if (idx === 11) switchWorkspace(1);
+-    else if (idx === 12) startScreensaver();
+-    else launchApp({ name: "LG Settings", appId: "com.palm.app.settings" });
++    else if (idx === 8) openTvOption("Bluetooth", "org.tizen.btaudiolist");
++    else if (idx === 9) openTvOption("Internet", "com.samsung.tv.knox-browser");
++    else if (idx === 10) openTvOption("Network", "org.tizen.NetworkSetting-Tizen");
++    else if (idx === 11) openTvOption("Volume", "org.tizen.volume-setting");
++    else if (idx === 12) switchWorkspace(1);
++    else if (idx === 13) startScreensaver();
+   }
+ 
+   // Home widgets that can take focus, in on-screen order (state.widgetIdx: 0 terminal, 1 weather,
+@@ -3622,6 +3666,21 @@
+   // Keyboard / LG Remote Navigation
+   var LEGACY_KEYS = { 8: "Backspace", 13: "Enter", 27: "Escape", 37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight", 40: "ArrowDown" };
+   window.addEventListener("keydown", function (e) {
++    var code = e.keyCode;
++    // webOS 3.x (Chrome 38) has no KeyboardEvent.key: derive it from the remote's keyCode
++    var k = e.key || LEGACY_KEYS[code] || (code >= 48 && code <= 57 ? String(code - 48) : "");
++    // Home lands on the dock whether or not the Samsung home page still exists.
++    // This firmware registers Exit as XF86Exit and the other home/back key as XF86Search.
++    var isHome = (k === "Home" || k === "GoHome" || k === "XF86HomePage" || k === "Homepage" || k === "XF86Exit" || k === "XF86Search" || code === 36);
++    if (isHome) {
++      var saver = document.getElementById("saver-overlay");
++      if (saver && saver.className === "active") stopScreensaver();
++      if (window.OMARCHY_GO_HOME) window.OMARCHY_GO_HOME();
++      e.preventDefault();
++      e.stopPropagation();
++      return;
++    }
++
+     var ov = document.getElementById("saver-overlay");
+     if (ov.className === "active") {
+       stopScreensaver();
+@@ -3629,10 +3688,8 @@
+       return;
+     }
+ 
+-    var code = e.keyCode;
+-    // webOS 3.x (Chrome 38) has no KeyboardEvent.key: derive it from the remote's keyCode
+-    var k = e.key || LEGACY_KEYS[code] || (code >= 48 && code <= 57 ? String(code - 48) : "");
+-    var isBack = (k === "Escape" || k === "Backspace" || code === 461 || code === 10009);   // 10009: Samsung Tizen Return
++    // 10009 is Return/Back. 10182 is Exit. Both stay inside OmarchyTV and land on its home.
++    var isBack = (k === "Escape" || k === "Backspace" || k === "Back" || k === "Exit" || k === "XF86Back" || k === "GoBack" || code === 461 || code === 10009 || code === 10182);
+ 
+     // A long press opened a menu while OK is still held: drop its auto-repeat so it can't pick an item.
+     if (state.okHeld && k === "Enter") { e.preventDefault(); return; }
+@@ -3690,7 +3747,7 @@
+     }
+ 
+     if (state.zone === "bar") {
+-      if (k === "ArrowRight") { state.barIdx = Math.min(12, state.barIdx + 1); renderAll(); e.preventDefault(); return; }
++      if (k === "ArrowRight") { state.barIdx = Math.min(13, state.barIdx + 1); renderAll(); e.preventDefault(); return; }
+       if (k === "ArrowLeft") { state.barIdx = Math.max(0, state.barIdx - 1); renderAll(); e.preventDefault(); return; }
+       if (k === "ArrowDown") {
+         if (state.ws === 0) state.zone = enterWidgets() ? "widgets" : "dock";
+diff -ruN a/config.xml b/config.xml
+--- a/config.xml	2026-11-08 10:58:49.316153224 -0500
++++ b/config.xml	2026-11-08 10:58:49.317342044 -0500
+@@ -2,6 +2,15 @@
+ <widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+         id="http://marcoporro.it/omarchytv" version="2.14.0" viewmodes="maximized">
+     <tizen:application id="OmarchyTV0.OmarchyTV" package="OmarchyTV0" required_version="2.3"/>
++    <tizen:app-control>
++        <tizen:src name="index.html" reload="disable"/>
++        <tizen:operation name="http://tizen.org/appcontrol/operation/main"/>
++    </tizen:app-control>
++    <tizen:app-control>
++        <tizen:src name="index.html" reload="disable"/>
++        <tizen:operation name="http://samsung.com/appcontrol/operation/eden_resume"/>
++    </tizen:app-control>
++    <tizen:category name="http://tizen.org/category/tv"/>
+     <content src="index.html"/>
+     <feature name="http://tizen.org/feature/screen.size.all"/>
+     <icon src="icon.png"/>
+@@ -17,7 +26,7 @@
+     <tizen:privilege name="http://tizen.org/privilege/application.info"/>
+     <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+     <tizen:privilege name="http://tizen.org/privilege/tv.window"/>
+-    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
++    <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="enable" encryption="disable" install-location="auto" hwkey-event="enable"/>
+     <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="true"/>
+     <tizen:profile name="tv-samsung"/>
+ </widget>
+diff -ruN a/index.html b/index.html
+--- a/index.html	2026-11-08 10:58:49.321346678 -0500
++++ b/index.html	2026-11-08 10:58:49.322569382 -0500
+@@ -888,8 +888,21 @@
+           <circle cx="18.5" cy="14.5" r="1.1"/>
+         </svg>
+       </div>
+-      <!-- Wi-Fi -->
+-      <div class="bar-icon-btn" data-bar-idx="8" data-action="wifi">
++      <!-- Bluetooth, Internet, Network, Volume: this set's own screens -->
++      <div class="bar-icon-btn" data-bar-idx="8" data-action="bt" title="Bluetooth">
++        <svg viewBox="0 0 24 24">
++          <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/>
++        </svg>
++      </div>
++      <div class="bar-icon-btn" data-bar-idx="9" data-action="internet" title="Internet">
++        <svg viewBox="0 0 24 24">
++          <circle cx="12" cy="12" r="9"/>
++          <path d="M3 12h18"/>
++          <path d="M12 3c2.5 2.8 3.8 6 3.8 9s-1.3 6.2-3.8 9"/>
++          <path d="M12 3c-2.5 2.8-3.8 6-3.8 9s1.3 6.2 3.8 9"/>
++        </svg>
++      </div>
++      <div class="bar-icon-btn" data-bar-idx="10" data-action="network" title="Network">
+         <svg viewBox="0 0 24 24">
+           <path d="M2 8.5a15 15 0 0 1 20 0"/>
+           <path d="M5.5 12.5a10 10 0 0 1 13 0"/>
+@@ -897,14 +910,7 @@
+           <circle cx="12" cy="20" r="1" fill="currentColor"/>
+         </svg>
+       </div>
+-      <!-- Bluetooth -->
+-      <div class="bar-icon-btn" data-bar-idx="9" data-action="bt">
+-        <svg viewBox="0 0 24 24">
+-          <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/>
+-        </svg>
+-      </div>
+-      <!-- Audio / Volume -->
+-      <div class="bar-icon-btn" data-bar-idx="10" data-action="vol">
++      <div class="bar-icon-btn" data-bar-idx="11" data-action="vol" title="Volume">
+         <svg viewBox="0 0 24 24">
+           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+           <path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+@@ -912,14 +918,14 @@
+         </svg>
+       </div>
+       <!-- Inputs (TV / HDMI) -->
+-      <div class="bar-icon-btn" data-bar-idx="11" data-action="inputs">
++      <div class="bar-icon-btn" data-bar-idx="12" data-action="inputs">
+         <svg viewBox="0 0 24 24">
+           <path d="M4 7h16l-2 10H6L4 7z"/>
+           <line x1="8" y1="11" x2="16" y2="11"/>
+         </svg>
+       </div>
+       <!-- Screensaver -->
+-      <div class="bar-icon-btn" data-bar-idx="12" data-action="saver">
++      <div class="bar-icon-btn" data-bar-idx="13" data-action="saver">
+         <svg viewBox="0 0 24 24">
+           <rect x="2" y="3" width="20" height="14"/>
+           <line x1="8" y1="21" x2="16" y2="21"/>
+diff -ruN a/tizen-shim.js b/tizen-shim.js
+--- a/tizen-shim.js	2026-11-08 10:58:49.323378747 -0500
++++ b/tizen-shim.js	2026-11-08 10:58:49.324134110 -0500
+@@ -122,6 +122,7 @@
+     function viewer() {
+       if (!active()) return;
+       try {
++        if (window.OMARCHY_NOTE_LEAVE) window.OMARCHY_NOTE_LEAVE();
+         window.tizen.application.launch("org.tizen.tv-viewer", function () { finish(); }, function (e) {
+           finish(new Error(("Switched to " + label + " but could not open the TV viewer: ") + ((e && (e.message || e.name)) || "launch failed")));
+         });
+@@ -138,7 +139,7 @@
+       } catch (e) { return false; }
+     }
+     function showSource() {
+-      try { window.tizen.application.getCurrentApplication().hide(); finish(); }
++      try { if (window.OMARCHY_NOTE_LEAVE) window.OMARCHY_NOTE_LEAVE(); window.tizen.application.getCurrentApplication().hide(); finish(); }
+       catch (e) { viewer(); }
+     }
+     try {
+@@ -169,9 +170,20 @@
+   try {
+     var keys = ["MediaPlayPause", "MediaPlay", "MediaPause", "MediaStop", "MediaFastForward", "MediaRewind",
+       "ChannelUp", "ChannelDown", "ColorF0Red", "ColorF1Green", "ColorF2Yellow", "ColorF3Blue",
+-      "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
++      "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "Exit", "Back", "Home"];
+     keys.forEach(function (k) { try { window.tizen.tvinputdevice.registerKey(k); } catch (e) {} });
+   } catch (e) {}
++  // Opening Netflix or the tuner is an intentional leave. Exit while this app is in front is not.
++  // The page stays in memory. A TV-side key hook raises it; this handler only returns to the dock.
++  var leaveUntil = 0;
++  var sawHidden = false;
++  window.OMARCHY_NOTE_LEAVE = function () { leaveUntil = Date.now() + 8000; };
++  document.addEventListener("visibilitychange", function () {
++    if (document.hidden) { sawHidden = true; return; }
++    if (!sawHidden || Date.now() < leaveUntil) return;
++    sawHidden = false;
++    if (window.OMARCHY_GO_HOME) window.OMARCHY_GO_HOME();
++  });
+ })();
+ 
+ // Window title says Tizen instead of the shared webOS title.

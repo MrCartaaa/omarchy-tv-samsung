@@ -8,6 +8,25 @@ Notes and scripts for one Samsung UN43TU7000FXZC (2020 7 Series, 43-inch) runnin
 
 A firmware update, Smart Hub reset, or factory reset can put the preloaded packages back. After any of those, run the check again.
 
+## Where the work stands
+
+Someone with this same model can follow this repository and reach the result this set has today. Open rows are still open on this television.
+
+| Goal | Result |
+| --- | --- |
+| Root this model without flashing firmware | Met. One Remote PC click runs one root command through [rackrot/tizenpwn](https://github.com/rackrot/tizenpwn) and `patches/tizenpwn-un43-allowlist.patch`. No root listener is left behind. |
+| Take ads, ACR, analytics, Pisa, and `com.samsung.tv.coba.adagent` off the app list, and keep Netflix, Spotify, Prime Video, the store, the CoBA shells, and the picture | Met. `packages.txt` is deactivate. `kept.txt` is the keep list. A boot can list some deactivated ids again. `check`, then `deactivate` while you are at the TV, clears them. |
+| Delete AirPlay, including after a boot brings the preload back | Met. `removed.txt` and `python3 scripts/tv_debloat.py remove`. The Apple web app is not a preload. `com.samsung.tv.airplay-app` is, so a later boot may copy that package back. Run `remove` again when `check` shows it. |
+| Install OmarchyTV as a normal app | Met. App id `OmarchyTV0.OmarchyTV`. Signing uses a Samsung certificate for that TV's own DUID. The certificate is not in this repository. |
+| Boot into OmarchyTV and skip the Samsung page | Partial. `db/first_screen/type` is `OmarchyTV0.OmarchyTV`. The tile page `com.samsung.tv.csfs` is deactivated. Firmware still rewrites `db/appfw/booting_appid_backup` to `org.tizen.tv-viewer`, so the picture still appears. The sideloaded widget is not in the Apps grid. |
+| Exit and Return land on the OmarchyTV dock without restarting the process | Exit from the live picture is met on this set. [scripts/session/omarchy-exit-hook.sh](scripts/session/omarchy-exit-hook.sh) raises the same pid to workspace 0. Return and Back do that while OmarchyTV itself is in front. Source the hook after every power-on. |
+| Home from Netflix opens the OmarchyTV dock | Open. The physical Home key is Linux code 63 and the platform consumes it. The change is a root edit of `module.keyrouter.cfg` while someone is at the TV. |
+| Source opens OmarchyTV page 2 | Open. Page 2 is workspace index 1, the TV and HDMI page. The remote Source key is not mapped. The Inputs icon inside the app already switches to that workspace. |
+| Bluetooth, Internet, network and Wi-Fi, and Volume on the top right | Met on this set, and in `patches/omarchytv-un43.patch`. The four screens are `org.tizen.btaudiolist`, `com.samsung.tv.knox-browser` (the app labeled Internet), `org.tizen.NetworkSetting-Tizen` (network and Wi-Fi), and `org.tizen.volume-setting`. |
+| A crash relaunches OmarchyTV at most twice, then leaves the picture up | Open. No watcher does that. |
+
+Spotify sitting on its loading page was the picture, and then AirPlay, covering a process that was still running. Spotify stays installed. AirPlay is on the uninstall list, and the Exit hook launches once per visit.
+
 ## The television
 
 | Field | Value |
@@ -194,7 +213,8 @@ scripts/session/watch-login.sh
 scripts/session/arm-click.sh
 scripts/session/omarchy-exit-hook.sh
 patches/tizenpwn-un43-allowlist.patch
-docs/omarchytv.md            install notes and the Exit hook
+patches/omarchytv-un43.patch    top-right bar, Exit stays in the same process
+docs/omarchytv.md            install notes, the widget patch, and the Exit hook
 ```
 
-OmarchyTV is installed as app id `OmarchyTV0.OmarchyTV`. It is not part of the deactivate command. `db/first_screen/type` is `OmarchyTV0.OmarchyTV`. The tile page `com.samsung.tv.csfs` is deactivated, so there is no Samsung tile home, and this sideloaded widget does not appear in the Apps grid. Exit from the live picture raises the same OmarchyTV process. The hook that does that is [scripts/session/omarchy-exit-hook.sh](scripts/session/omarchy-exit-hook.sh). It has to be sourced after each power-on. The physical Home key is still taken by the platform before that script can see it. The install notes are in [docs/omarchytv.md](docs/omarchytv.md).
+OmarchyTV is installed as app id `OmarchyTV0.OmarchyTV`. It is not part of the deactivate command. `db/first_screen/type` is `OmarchyTV0.OmarchyTV`. The tile page `com.samsung.tv.csfs` is deactivated, so there is no Samsung tile home, and this sideloaded widget does not appear in the Apps grid. Exit from the live picture raises the same OmarchyTV process. The hook that does that is [scripts/session/omarchy-exit-hook.sh](scripts/session/omarchy-exit-hook.sh). It has to be sourced after each power-on. The physical Home key is still taken by the platform before that script can see it. Another set of this model builds the same widget from [docs/omarchytv.md](docs/omarchytv.md) and `patches/omarchytv-un43.patch`. Certificates and the built widget stay off this repository.

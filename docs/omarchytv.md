@@ -2,7 +2,7 @@
 
 Installed as a normal app. Exit from the live picture raises this same process. The physical Home key does not.
 
-Upstream is [piermark/omarchytv](https://github.com/piermark/omarchytv). The build installed on this TV is `v2.14.0-beta`.
+Upstream is [piermark/omarchytv](https://github.com/piermark/omarchytv). The build installed on this TV is `v2.14.0-beta` plus [patches/omarchytv-un43.patch](../patches/omarchytv-un43.patch).
 
 ## What was installed
 
@@ -35,14 +35,31 @@ setsid sh -c '. /home/owner/share/tmp/sdk_tools/omarchy-exit-hook.sh' \
   </dev/null >/tmp/omarchy-exit-hook.log 2>&1 3>&- &
 ```
 
-## What a backwards-compatible version has to cover
+## Build the same widget
 
-A later change in this repository should add a widget that installs on Tizen 5.5 / platform `20_KANTSU2_UHD_BASIC` as a normal app:
+`patches/omarchytv-un43.patch` is the difference between the published `v2.14.0-beta` widget and the package installed on this TV. Apply it to an unpacked copy of that exact file. The patch keeps `required_version` at `2.3` and the same public privileges.
 
-- Same public privileges the current widget uses. No partner privilege and no attempt to become Home.
-- A Samsung author and distributor certificate for DUID `<duid>`.
-- A fresh download whose SHA-256 is recorded in this file after the file is hashed locally.
-- An install through `tizen package` and `pkgcmd -i -t wgt --global`. That install is done. The Apps grid still does not list this widget.
-- The Tizen 5.5 web engine runs this widget. Further source changes should not raise `required_version` above 5.5.
+It does four things:
 
-Root is not required for that install. Do not sign the widget with an Android keystore. Do not sideload the unsigned file.
+- The top-right cluster opens this set's own screens. Bluetooth is `org.tizen.btaudiolist`. Internet is `com.samsung.tv.knox-browser`, the package this TV labels Internet. Network is `org.tizen.NetworkSetting-Tizen`, the network and Wi-Fi screen. Volume is `org.tizen.volume-setting`. Upstream sent that cluster to `com.palm.app.settings`.
+- Exit, Return, and Back while this app is in front move to workspace 0 in the same page. `background-support` is `enable`. Becoming visible again calls `OMARCHY_GO_HOME` unless the app itself just launched the tuner or another app.
+- `aul_test launch OmarchyTV0.OmarchyTV omarchy_nav home` on the running process reads `omarchy_nav=home` and calls `OMARCHY_GO_HOME`. `reload` is `disable` on the main and `eden_resume` app-controls, so that launch does not load the page again.
+- `tizen:category` is `http://tizen.org/category/tv`. The Apps grid on this set still does not list the widget.
+
+Another UN43TU7000 uses its own DUID. The certificate that signed this set is for `<duid>` and is not in the repository.
+
+1. Download `OmarchyTV-tizen-2.14.0-unsigned.wgt` from the `v2.14.0-beta` release. Its SHA-256 must be `5d12bd2ad82098d674f0217d61d71adfb5dda62c0e996b04b337b2282a30977c`.
+2. Unpack it. `app.js` is in the top directory of the archive.
+3. From that directory:
+
+```bash
+patch -p1 < /path/to/un43tu7000-debloat/patches/omarchytv-un43.patch
+```
+
+4. Create a Samsung author and distributor certificate whose distributor certificate contains this television's DUID. Tizen Studio 6.0's `tizen` command runs under the bundled Java 8, not a newer system Java. Sign with `tizen package -t wgt -s <profile>`.
+5. Install with `pkgcmd -i -t wgt -p <signed.wgt> --global`. Without `--global` this image returns `Security error [-22]`.
+6. Copy `scripts/session/omarchy-exit-hook.sh` to `/home/owner/share/tmp/sdk_tools/` and source it with the command in the Exit section. Do that again after every power-on.
+
+Do not raise `required_version`. Do not sign with an Android keystore. Do not sideload the unsigned file. Do not commit the certificate, the password, `device-profile.xml`, or the built widget. `build/` is gitignored for that reason.
+
+The physical Home key and the remote Source key are outside this patch. Home still needs `module.keyrouter.cfg`. Source is still unmapped. Nothing in this repository relaunches OmarchyTV after a crash. A crash policy of at most two relaunches, then the normal picture, is still open.
