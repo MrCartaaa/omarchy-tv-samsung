@@ -18,7 +18,7 @@ Upstream is [piermark/omarchytv](https://github.com/piermark/omarchytv). The bui
 
 ## Exit returns to the dock
 
-Exit resumes `org.tizen.tv-viewer`, and Samsung TV Plus tunes a channel on that picture. While the channel is up, `aul_test get_status` stays `STATUS_BG`, so a focus poll does not see it. The Samsung TV Plus button on this remote is a different foreground: `org.tizen.epg`, the guide. It stays there, and a power cycle was the way out. `scripts/session/omarchy-exit-hook.sh` follows the scenario log and raises OmarchyTV on the first line of a visit that names `org.tizen.tv-viewer`, `com.samsung.tv.tvplus`, or `org.tizen.epg`. Power-on still opens the picture, and that picture is still one raise. A visit that moves from the guide to the picture does not launch a second time. On that edge it runs:
+Exit resumes `org.tizen.tv-viewer`, and Samsung TV Plus tunes a channel on that picture. While the channel is up, `aul_test get_status` stays `STATUS_BG`, so a focus poll does not see it. The Samsung TV Plus button on this remote is a different foreground: `org.tizen.epg`, the guide. It stays there, and a power cycle was the way out. `scripts/session/omarchy-exit-hook.sh` follows the scenario log and raises OmarchyTV on the first line of a visit whose foreground is only `org.tizen.tv-viewer`, `com.samsung.tv.tvplus`, or `org.tizen.epg`. Power-on still opens the picture, and that picture is still one raise. A volume press while Netflix, Spotify, Prime Video, or another app is open leaves that app on the same line as the picture. Volume on the dock leaves OmarchyTV on that line. Those lines are ignored. Exit removes the app, and the next line is the picture alone. A visit that moves from the guide to the picture does not launch a second time. On that edge it runs:
 
 ```text
 aul_test launch OmarchyTV0.OmarchyTV omarchy_nav home
@@ -28,7 +28,7 @@ That keeps the pid that is already running, and the page moves to workspace 0. T
 
 The physical Home key on this remote is Linux code 63 (`KEY_F5`). The platform consumes it before `/dev/input` sees it. The hook does not read input devices. Changing Home means editing `module.keyrouter.cfg` as root, on a read-only filesystem, with one Remote PC click.
 
-UEP rejects `sh` of the unsigned file. Source it after each power-on. Close fd 3. It does not survive a power cycle:
+UEP rejects `sh` of the unsigned file. Source it once after each power-on. A second source sees the running shell and leaves that copy in place. Close fd 3. It does not survive a power cycle:
 
 ```text
 setsid sh -c '. /home/owner/share/tmp/sdk_tools/omarchy-exit-hook.sh' \

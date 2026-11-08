@@ -26,9 +26,19 @@
 # again. A launch on every line suspends whatever was in front, and a
 # streaming app can come back stuck on its loading page.
 #
-# Netflix, Spotify, and Omarchy itself are not a visit. Volume can leave
-# those apps visible with no focused app. A line that does not name the
-# picture is ignored.
+# Volume while a show is playing inserts the picture beside that app and
+# leaves the scenario as NETFLIX:
+#
+#   [FG:org.tizen.tv-viewer:org.tizen.netflix-app]
+#
+# Exit drops the app. The next line is the picture alone. A line that
+# still names some other app is ignored. Prime Video, Spotify, and any
+# other app log the same pair. Volume on the OmarchyTV dock logs the
+# picture beside OmarchyTV:
+#
+#   [FG:org.tizen.tv-viewer:OmarchyTV0.OmarchyTV]
+#
+# That line is ignored. Launching on it redraws the dock.
 #
 # The physical Home key is Linux code 63 (KEY_F5) on this remote. The
 # platform consumes it before /dev/input sees it, so this script does not
@@ -56,6 +66,20 @@ if [ -f "$LOCK" ]; then
     echo "already running pid $old" >>"$LOG"
     exit 0
   fi
+fi
+# The pid file is removed before a stuck copy dies. Count shells that are
+# already sourcing this file, including this one. A grep for the name
+# matches itself, so match the sdk_tools path instead.
+copies=0
+for c in /proc/[0-9]*/cmdline; do
+  line=$(tr '\0' ' ' <"$c") 2>/dev/null || continue
+  case $line in
+    *'sdk_tools/omarchy-exit-hook.sh'*) copies=$((copies + 1)) ;;
+  esac
+done
+if [ "$copies" -gt 1 ]; then
+  echo "$(date '+%H:%M:%S') already running copies $copies" >>"$LOG"
+  exit 0
 fi
 echo $$ >"$LOCK"
 
@@ -115,16 +139,46 @@ offset=$(count_of -c "$FG" || echo 0)
 echo "$(stamp) watch pid $$ scenario $dlog_pid skip $offset" >>"$LOG"
 printf '%s\n' "0" >"$STATE"
 rest=""
+# An empty file is not the replay. The first bytes can arrive after this
+# wait, and that burst is still the ring buffer. Skip it once it sits still.
+if [ "$offset" = 0 ]; then
+  pending=1
+else
+  pending=0
+fi
+hold=0
+holdn=0
 WORK=/tmp/omarchy-fg.work
 LINES=/tmp/omarchy-fg.lines
 
 picture() {
   case $1 in
     *org.tizen.tv-viewer*|*com.samsung.tv.tvplus*|*com.samsung.tv.tvPlus*|*org.tizen.epg*)
-      return 0
+      ;;
+    *)
+      return 1
       ;;
   esac
-  return 1
+  case $1 in
+    *OmarchyTV0.OmarchyTV*)
+      return 1
+      ;;
+  esac
+  field=$1
+  while :; do
+    token=${field%%:*}
+    case $token in
+      ''|org.tizen.tv-viewer|com.samsung.tv.tvplus|com.samsung.tv.tvPlus|org.tizen.epg)
+        ;;
+      *)
+        return 1
+        ;;
+    esac
+    case $field in
+      *:*) field=${field#*:} ;;
+      *) return 0 ;;
+    esac
+  done
 }
 
 take_lines() {
@@ -153,14 +207,36 @@ while :; do
     dlog_pid=$!
     offset=0
     rest=""
+    pending=1
+    hold=0
+    holdn=0
     sleep 0.5
     offset=$(count_of -c "$FG" || echo 0)
+    if [ "$offset" != 0 ]; then
+      pending=0
+    fi
   fi
 
   size=$(count_of -c "$FG" || echo 0)
   if [ "$size" -lt "$offset" ]; then
     offset=0
     rest=""
+  fi
+  if [ "$pending" = 1 ]; then
+    if [ "$size" = "$hold" ] && [ "$size" -gt 0 ]; then
+      holdn=$((holdn + 1))
+    else
+      holdn=0
+      hold=$size
+    fi
+    if [ "$holdn" -ge 2 ]; then
+      offset=$size
+      pending=0
+      rest=""
+      echo "$(stamp) skip late replay $offset" >>"$LOG"
+    fi
+    sleep 0.25
+    continue
   fi
   if [ "$size" -le "$offset" ]; then
     sleep 0.25
@@ -177,14 +253,18 @@ while :; do
     esac
     fg=${line#*'[FG:'}
     fg=${fg%%']'*}
-    held=$(cat "$STATE" 2>/dev/null || echo 0)
+    held=$(cat "$STATE" 2>/dev/null)
+    case $held in
+      1) ;;
+      *) held=0 ;;
+    esac
     if picture "$fg"; then
-      if [ "$held" -eq 0 ]; then
+      if [ "$held" = 0 ]; then
         echo 1 >"$STATE"
         echo "$(stamp) picture $fg; raise once" >>"$LOG"
         aul_test launch "$APP" omarchy_nav home >>"$LOG" 2>&1
       fi
-    elif [ "$held" -eq 1 ]; then
+    elif [ "$held" = 1 ]; then
       echo 0 >"$STATE"
       echo "$(stamp) picture released $fg" >>"$LOG"
     fi
