@@ -1,5 +1,5 @@
 [Unit]
-Description=Re-apply the Samsung TV debloat lists while the TV is on
+Description=Check that the Samsung TV debloat stayed off
 
 [Service]
 Type=oneshot

@@ -13,7 +13,7 @@ Upstream is [piermark/omarchytv](https://github.com/piermark/omarchytv). The bui
 - `pkgcmd -i -t wgt -p <file>` without `--global` copied the app under `/var/lib/empty/apps_rw` and failed with `Security error [-22]` (`Unexpected path` in `security_registration.cc`). The SDB command user on this set has that empty home. `pkgcmd -i -t wgt -p <file> --global` finished at 100 percent with `end ok`.
 - `sdb shell 0 applist` lists `'OmarchyTV' 'OmarchyTV0.OmarchyTV'`. The staged widget was removed. `device-profile.xml` remains in `/home/owner/share/tmp/sdk_tools/`.
 - The widget runs on this Tizen 5.5 set. The project's published test set is a Tizen 9 `UN55U7900`.
-- `db/first_screen/type` is `OmarchyTV0.OmarchyTV`. On boot, the firmware rewrites `db/appfw/booting_appid_backup` back to `org.tizen.tv-viewer`. Do not point boot at OmarchyTV while `memory/boot/cold_poweroff_request_pkg` names `stability-monitor`.
+- `db/first_screen/type` is `OmarchyTV0.OmarchyTV`. On boot, the firmware rewrites `db/appfw/booting_appid_backup` back to `org.tizen.tv-viewer`. That id is the picture. Leave it installed. Deactivating it can black-screen the panel, and there is no package backup. Do not point boot at OmarchyTV while `memory/boot/cold_poweroff_request_pkg` names `stability-monitor`.
 - `com.samsung.tv.csfs`, the Samsung tile page, is deactivated. `com.samsung.tv.coba.home` stays. The sideloaded widget is not listed in the Apps grid.
 
 ## Exit returns to the dock
@@ -39,13 +39,15 @@ setsid sh -c '. /home/owner/share/tmp/sdk_tools/omarchy-exit-hook.sh' \
 
 `patches/omarchytv-un43.patch` is the difference between the published `v2.14.0-beta` widget and the package installed on this TV. Apply it to an unpacked copy of that exact file. The patch keeps `required_version` at `2.3` and the same public privileges.
 
-It does five things:
+It does seven things:
 
 - The top-right cluster opens this set's own screens. Bluetooth is `org.tizen.btaudiolist`. Internet is `com.samsung.tv.knox-browser`, the package this TV labels Internet. Network is `org.tizen.NetworkSetting-Tizen`, the network and Wi-Fi screen. Volume is `org.tizen.volume-setting`. Upstream sent that cluster to `com.palm.app.settings`.
 - The dock is Netflix, Spotify, and Prime Video, using the upstream wordmark tiles (the gradient and the name). The Tizen shim used to replace that list with every installed app and Samsung's store PNG. Those store icons are not used. The other upstream tiles stay in `DEFAULT_APPS` and are not placed on this dock.
 - Exit, Return, and Back while this app is in front move to workspace 0 in the same page. `background-support` is `enable`. Becoming visible again calls `OMARCHY_GO_HOME` unless the app itself just launched the tuner or another app.
 - `aul_test launch OmarchyTV0.OmarchyTV omarchy_nav home` on the running process reads `omarchy_nav=home` and calls `OMARCHY_GO_HOME`. `reload` is `disable` on the main and `eden_resume` app-controls, so that launch does not load the page again.
 - `tizen:category` is `http://tizen.org/category/tv`. The Apps grid on this set still does not list the widget.
+- The boot sequence waits until the page is visible. A power-on can load the page while the panel is still on the Samsung logo. Time spent hidden does not advance the script, and the power key does not skip it until the tube has opened.
+- A theme picked on the TV is posted to the paired PC at `/v1/theme/set` with no Grok ask code. Saying “change my theme to nord” in the companion applies it on the TV and sends that same request. It does not open the TV browser. The companion agent “Grok on grok.com” is the choice that opens the browser. A PC bridge that still requires the ask code on `/v1/theme/set` will refuse the change. Themes that exist only in the widget stay on the TV.
 
 Another UN43TU7000 uses its own DUID. The certificate that signed this set is not in the repository.
 

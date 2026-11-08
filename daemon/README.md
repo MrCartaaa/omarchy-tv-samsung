@@ -37,7 +37,13 @@ loginctl enable-linger "$USER"
 
 ## What a run means
 
-`status=off` means the developer port did not open. The television is off or developer mode is not accepting this computer. `status=clean` means nothing had come back. `status=apply` means `pkgcmd` ran for the ids that were listed. Exit 2 from the service means `sdb`, tizenpwn, or the callback failed. An id that is still listed after the attempt is logged, the service exits 0, and the next run tries again.
+The last line is the result. Disable counts come first. `already` plus `newly` equals `required` when every targeted app is off:
+
+```text
+SETTLE required disabled=21 already disabled=19 newly disabled=2 required deleted=3 already deleted=3 newly deleted=0
+```
+
+`already` means the app was not on the list, or `pkgcmd` reported it gone and the list agrees. That case is one line, `result=already-gone`, and it is not an error. `newly` means this run turned it off. When both newly counts are 0, no app required deletion or disabling. `still-listed` means it is still there, so `already` plus `newly` is short of `required`. `status=off` means the developer port did not open. That is a warning, not a list update. Exit 2 from the service means `sdb`, tizenpwn, or the callback failed. A still-listed id is logged, the service exits 0, and the next run tries again.
 
 Check the timer:
 

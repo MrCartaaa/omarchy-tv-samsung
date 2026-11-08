@@ -179,7 +179,7 @@ def uninstall_shell(package: str, kind: str, app_ids: tuple[str, ...]) -> str:
     kills = "; ".join(f"pkgcmd -k -n {app_id} >/dev/null 2>&1" for app_id in app_ids)
     return (
         f"{kills}; pkgcmd -u -t {kind} -n {package} --global >/tmp/pkg-one.txt 2>&1; "
-        f"echo {package}:$?; tail -c 180 /tmp/pkg-one.txt"
+        f"echo REMOVED {package}:$?"
     )
 
 
@@ -397,8 +397,100 @@ def deactivate_shell(package: str) -> str:
         f"st=$?; "
         f"if [ \"$st\" -ne 0 ]; then pkgcmd -D -t app -n {package} --global "
         f">/tmp/pkg-one.txt 2>&1; st=$?; fi; "
-        f"echo DEACTIVATE {package}:$st; tail -c 160 /tmp/pkg-one.txt; echo"
+        f"echo DEACTIVATE {package}:$st"
     )
+
+
+def command_codes(output: str, prefix: str) -> dict[str, int]:
+    """Return the exit code from each `PREFIX name:code` line. Later lines win."""
+    codes: dict[str, int] = {}
+    for raw in output.splitlines():
+        line = raw.strip()
+        if not line.startswith(prefix + " "):
+            continue
+        name, sep, code = line[len(prefix) + 1 :].partition(":")
+        if sep and name and (code.lstrip("-").isdigit()):
+            codes[name] = int(code)
+    return codes
+
+
+def settle_counts(
+    required: tuple[str, ...],
+    present_before: set[str],
+    present_after: set[str],
+    codes: dict[str, int],
+    *,
+    action: str,
+    done: str,
+) -> tuple[list[str], int, int, int]:
+    """Split one list into already gone, newly changed, and still listed.
+
+    A non-zero pkgcmd code for an id that is absent afterwards is already
+    gone, not a failure. The three counts add up to len(required).
+    """
+    lines: list[str] = []
+    already = newly = still = 0
+    for name in required:
+        if name not in present_before:
+            already += 1
+            continue
+        code = codes.get(name)
+        if name not in present_after and code == 0:
+            newly += 1
+            lines.append(f"SETTLE app={name} action={action} result={done}")
+        elif name not in present_after:
+            already += 1
+            lines.append(f"SETTLE app={name} action={action} result=already-gone")
+        else:
+            still += 1
+            shown = "none" if code is None else str(code)
+            lines.append(
+                f"SETTLE app={name} action={action} result=still-listed code={shown}"
+            )
+    return lines, already, newly, still
+
+
+def settle_summary(kind: str, required: int, already: int, newly: int, still: int) -> str:
+    """Count clause for one list. already + newly + still equals required."""
+    line = (
+        f"required {kind}={required} already {kind}={already} "
+        f"newly {kind}={newly}"
+    )
+    if still:
+        return f"{line} still-listed={still}"
+    return line
+
+
+def settle_report(
+    disabled_required: int,
+    disabled_already: int,
+    disabled_newly: int,
+    disabled_still: int,
+    deleted_required: int,
+    deleted_already: int,
+    deleted_newly: int,
+    deleted_still: int,
+) -> str:
+    """One line, disable counts first.
+
+    A journal that keeps a single stdout record cannot drop the disable
+    result behind the delete result when both counts share that line.
+    """
+    disabled = settle_summary(
+        "disabled",
+        disabled_required,
+        disabled_already,
+        disabled_newly,
+        disabled_still,
+    )
+    deleted = settle_summary(
+        "deleted",
+        deleted_required,
+        deleted_already,
+        deleted_newly,
+        deleted_still,
+    )
+    return f"SETTLE {disabled} {deleted}"
 
 
 def cmd_settle(
@@ -434,34 +526,82 @@ def cmd_settle(
         for group in uninstall_groups(removals)
         if any(app_id in found for app_id in group[2])
     ]
-    if not back and not aliases and not groups:
-        print(f"SETTLE tv={args.tv} status=clean")
-        return 0
-    source = args.tizenpwn / "src"
-    if not (source / "tizenpwn" / "sdb.py").is_file():
-        print(f"tizenpwn source not found at {source}", file=sys.stderr)
-        return 2
-    os.environ["SDB"] = str(args.sdb)
-    sys.path.insert(0, str(source))
-    from tizenpwn.sdb import SdbClient, SdbError
+    disable_codes: dict[str, int] = {}
+    delete_codes: dict[str, int] = {}
+    if back or aliases or groups:
+        source = args.tizenpwn / "src"
+        if not (source / "tizenpwn" / "sdb.py").is_file():
+            print(f"tizenpwn source not found at {source}", file=sys.stderr)
+            return 2
+        os.environ["SDB"] = str(args.sdb)
+        sys.path.insert(0, str(source))
+        from tizenpwn.sdb import SdbClient, SdbError
 
-    parts = [deactivate_shell(pkg) for pkg in back]
-    parts.extend(deactivate_shell(alias) for alias in aliases)
-    parts.extend(uninstall_shell(pkg, kind, app_ids) for pkg, kind, app_ids in groups)
+        parts = [deactivate_shell(pkg) for pkg in back]
+        parts.extend(deactivate_shell(alias) for alias in aliases)
+        parts.extend(uninstall_shell(pkg, kind, app_ids) for pkg, kind, app_ids in groups)
+        try:
+            client = SdbClient(args.sdb, args.tv, timeout=30)
+            client.connect()
+            result = capture_staged(
+                client, "\n".join(parts) + "\n", args.bind_host, timeout=120
+            )
+        except (SdbError, OSError) as error:
+            print(f"SETTLE status=error error={error}")
+            return 2
+        disable_codes = command_codes(result.output, "DEACTIVATE")
+        package_codes = command_codes(result.output, "REMOVED")
+        delete_codes = {
+            row.app_id: package_codes[row.package_id]
+            for row in removals
+            if row.package_id in package_codes
+        }
+        try:
+            found_after = present_ids(connect_and_applist(args.sdb, args.tv))
+        except (OSError, subprocess.TimeoutExpired, RuntimeError) as error:
+            print(f"SETTLE status=error error={error}")
+            return 2
+    else:
+        found_after = found
+
+    disable_lines, disabled_already, disabled_newly, disabled_still = settle_counts(
+        packages,
+        found,
+        found_after,
+        disable_codes,
+        action="disable",
+        done="newly-disabled",
+    )
+    delete_lines, deleted_already, deleted_newly, deleted_still = settle_counts(
+        tuple(row.app_id for row in removals),
+        found,
+        found_after,
+        delete_codes,
+        action="delete",
+        done="newly-deleted",
+    )
+    for line in disable_lines + delete_lines:
+        print(line, flush=True)
+    missing = [pkg for pkg in kept if pkg not in found_after]
+    for pkg in missing:
+        print(f"SETTLE app={pkg} action=keep result=missing", flush=True)
+    # Last line. Disable counts lead so a one-line journal still shows them.
     print(
-        f"SETTLE tv={args.tv} status=apply deactivate={','.join(back) or '-'} "
-        f"remove={','.join(group[0] for group in groups) or '-'}",
+        settle_report(
+            len(packages),
+            disabled_already,
+            disabled_newly,
+            disabled_still,
+            len(removals),
+            deleted_already,
+            deleted_newly,
+            deleted_still,
+        ),
         flush=True,
     )
-    try:
-        client = SdbClient(args.sdb, args.tv, timeout=30)
-        client.connect()
-        result = capture_staged(client, "\n".join(parts) + "\n", args.bind_host, timeout=120)
-    except (SdbError, OSError) as error:
-        print(f"SETTLE tv={args.tv} status=error error={error}")
-        return 2
-    print(result.output.strip(), flush=True)
-    return cmd_check(args.sdb, args.tv, packages, kept, removals)
+    if disabled_still or deleted_still or missing:
+        return 1
+    return 0
 
 
 def cmd_remove(args: argparse.Namespace, removals: tuple[Removal, ...], packages: tuple[str, ...], kept: tuple[str, ...]) -> int:

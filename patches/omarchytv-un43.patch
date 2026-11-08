@@ -6,8 +6,8 @@
 # This file does not contain a certificate, a signed widget, or a device profile.
 
 diff -ruN omarchy-a/app.js omarchy-b/app.js
---- a/app.js	2026-11-08 11:37:31.670433402 -0500
-+++ b/app.js	2026-11-08 11:37:31.671713795 -0500
+--- a/app.js
++++ b/app.js
 @@ -12,7 +12,7 @@
    var STRINGS = {
      en: {
@@ -35,7 +35,30 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
        sys_clock: "Uhr",
        box_weather: "wetter", box_pc: "omarchy · pc", box_ai: "ki-guthaben · pc", box_tv: "tv", box_app: "app", box_ws_pc: "pc", box_system: "system",
        term_theme: "thema ", term_net: "netz ", term_up: "up ",
-@@ -513,16 +513,22 @@
+@@ -454,7 +454,7 @@
+     arcadePcTheme: false,   // v2.14 RICE WARS re-themes the Omarchy PC per cleared level (its own theme comes back on exit)
+     pluginRetroCrt: "off",  // v2.14 Retro CRT plugin: "off" | "light" | "strong" (scanlines, mask, vignette, theme bezel)
+     pcPower: false,         // v2.14 LG: the PC suspends when the TV turns off (POST /v1/power; needs TV control approved)
+-    themeToPc: false,       // v2.14 reverse theme sync: a theme picked here also switches the PC (POST /v1/theme/set)
++    themeToPc: true,        // a theme picked here also switches the PC (POST /v1/theme/set)
+     bootScreen: "boot",     // v2.14 boot screen (boot.js): "boot" at app start, "wake" also after standby, "off"
+     bootFx: true,           // v2.14 boot screen scanlines and glow
+     antiBurnIn: true,
+@@ -478,6 +478,13 @@
+     var saved = localStorage.getItem("omarchytv_cfg_2110");
+     if (saved) cfg = Object.assign({}, DEFAULT_CFG, JSON.parse(saved));
+   } catch (e) {}
++  // Older saves stored the PC switch off, and that switch never sent a theme.
++  // Turn it on once. Turning it off after this stays off.
++  if (!cfg.themeSyncReady) {
++    cfg.themeToPc = true;
++    cfg.themeSyncReady = true;
++    try { localStorage.setItem("omarchytv_cfg_2110", JSON.stringify(cfg)); } catch (e) {}
++  }
+ 
+   function saveCfg() {
+     try { localStorage.setItem("omarchytv_cfg_2110", JSON.stringify(cfg)); } catch (e) {}
+@@ -513,16 +520,22 @@
      { id: "settings", name: "LG Settings", appId: "com.palm.app.settings", brand: "settings", bg: "linear-gradient(135deg, #27272a 0%, #18181b 100%)", fg: "#f43f5e", sub: "webOS" }
    ];
  
@@ -67,7 +90,7 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
    }
    function tizenAppList(list) {
      if (!list || typeof list.length !== "number") return null;
-@@ -533,15 +539,13 @@
+@@ -533,15 +546,13 @@
            typeof a.tizenId !== "string" || !a.tizenId || seen[a.id]) continue;
        seen[a.id] = true;
        var brand = typeof a.brand === "string" && a.brand ? a.brand : a.id;
@@ -88,7 +111,7 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
      return out.length ? out : null;
    }
    function setTizenApps(list) { applyAppList(tizenAppList(list)); }
-@@ -559,7 +563,7 @@
+@@ -559,7 +570,7 @@
      renderAll();
    }
    if (window.OMARCHY_PLATFORM === "tizen") {
@@ -97,7 +120,37 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
      window.addEventListener("omarchy-tizen-apps", function (e) { setTizenApps(e && e.detail); });
    }
  
-@@ -1183,7 +1187,7 @@
+@@ -981,9 +992,26 @@
+       state.pcStatus = j;
+       liftoffState(j && j.liftoff);
+       if (j) rememberPc(cfg.pcHost, j.host);
+-      if (j && j.theme && DATA.themes[j.theme] && cfg.syncPcTheme) {
+-        cfg.theme = j.theme;
+-        applyTheme();
++      // Follow the PC when its theme changes. The first report is only
++      // remembered, so opening the app does not overwrite a theme just
++      // picked here. A theme this TV does not have is left alone.
++      if (j && j.theme) {
++        var incoming = j.theme;
++        var prev = cfg.pcThemeSeen || "";
++        var changed = false;
++        if (prev && incoming !== prev && DATA.themes[incoming] && cfg.theme !== incoming) {
++          cfg.theme = incoming;
++          cfg.randomTheme = false;
++          cfg.wallpaperIdx = 0;
++          cfg.wallpaper = "";
++          applyTheme();
++          changed = true;
++        }
++        if (incoming !== prev) {
++          cfg.pcThemeSeen = incoming;
++          changed = true;
++        }
++        if (changed) saveCfg();
+       }
+       renderWidgets();
+       return j;
+@@ -1183,7 +1211,7 @@
  
      var tip = document.getElementById("bar-tip");
      if (state.zone === "bar" && state.barIdx >= 6) {
@@ -106,7 +159,78 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
        tip.textContent = state.barIdx === 7 ? "OmarchyTV Arcade" : tr(tipKeys[state.barIdx - 6] || "tip_saver");   // a product name, the same in every language
        tip.style.display = "block";
      } else {
-@@ -2376,6 +2380,7 @@
+@@ -1444,7 +1472,9 @@
+         cfg.randomWallpaper = !cfg.randomWallpaper; saveCfg(); openThemesModal(true);
+       } },
+       { label: tr("theme_to_pc"), right: cfg.themeToPc ? "on" : "off", act: function () {
+-        cfg.themeToPc = !cfg.themeToPc; saveCfg(); openThemesModal(true);
++        cfg.themeToPc = !cfg.themeToPc; saveCfg();
++        if (cfg.themeToPc) themeToPc(cfg.theme);
++        openThemesModal(true);
+       } }
+     ].concat(names.map(function (n) {
+       return {
+@@ -1468,6 +1498,7 @@
+   // v2.14 reverse theme sync: with "Also change the PC theme" on and a real PC paired, the theme just picked here
+   // goes to the PC bridge (omarchy-tv webos-serve), which runs omarchy-theme-set when it has that theme. The PC's
+   // status then reports the same theme, so nothing loops. A theme the PC doesn't have changes only the TV.
++  // This request does not use the Grok ask code. Grok, updates, and power still do.
+   // ---- v2.14 PC requests with the ask code (update via PC, power) ----
+   function pcPost(path, body, keepalive) {
+     var o = { method: "POST", headers: { "X-Omarchy-Token": cfg.grokbotCode || "", "Content-Type": "text/plain" }, body: JSON.stringify(body) };
+@@ -1603,14 +1634,14 @@
+     var host = document.getElementById("stage") || document.body;
+     arcadeUi = window.OmarchyArcade.open(host, {
+       lang: getLang(), theme: DATA.themes[cfg.theme], themeName: cfg.theme, themes: DATA.themes,
+-      sound: cfg.arcadeSound !== false, pcTheme: !!cfg.arcadePcTheme && pcReady(),
++      sound: cfg.arcadeSound !== false, pcTheme: !!cfg.arcadePcTheme && !cfg.pcSimulated && !!cfg.pcHost,
+       onPcTheme: function (name) { arcadePcTheme(name || cfg.theme); },
+       onExit: function () { arcadeUi = null; renderAll(); }
+     });
+   }
+   function arcadePcTheme(name) {   // like themeToPc, but only for the game (its own setting); the PC's theme comes back on exit
+-    if (!pcReady()) return;
+-    fetch(pcBase() + "/v1/theme/set", { method: "POST", headers: { "X-Omarchy-Token": cfg.grokbotCode || "", "Content-Type": "text/plain" },
++    if (cfg.pcSimulated || !cfg.pcHost || typeof fetch !== "function") return;
++    fetch(pcBase() + "/v1/theme/set", { method: "POST", headers: { "Content-Type": "text/plain" },
+       body: JSON.stringify({ name: name }) }).then(function () {}, function () {});
+   }
+   window.OMARCHY_OPEN_ARCADE = openArcade;
+@@ -1632,11 +1663,18 @@
+   }, 1000);
+ 
+   function themeToPc(name) {
+-    if (!cfg.themeToPc || !cfg.pcHost || cfg.pcSimulated) return;
+-    fetch(pcBase() + "/v1/theme/set", { method: "POST", headers: { "X-Omarchy-Token": cfg.grokbotCode || "", "Content-Type": "text/plain" },
++    if (!cfg.themeToPc) return;
++    if (cfg.pcSimulated || !cfg.pcHost) { showToast("Pair the PC first"); return; }
++    fetch(pcBase() + "/v1/theme/set", { method: "POST", headers: { "Content-Type": "text/plain" },
+       body: JSON.stringify({ name: name }) }).then(function (r) {
+-      return r.json().then(function (j) { if (j && j.result === "unknown") showToast(tr("theme_not_on_pc")); });
+-    }, function () {});
++      return r.json().then(function (j) {
++        if (!j) return;
++        if (j.result === "unknown") showToast(tr("theme_not_on_pc"));
++        else if (j.result === "ok" || j.result === "same") showToast("PC theme → " + name);
++        else if (j.error === "unauthorized") showToast("The PC refused the theme change");
++        else if (j.result === "failed" || j.error) showToast("PC theme did not change");
++      }, function () { if (r.status === 401) showToast("The PC refused the theme change"); });
++    }, function () { showToast("PC did not answer"); });
+   }
+ 
+   function openWeatherModal() {
+@@ -1948,7 +1986,9 @@
+         cfg.bootSound = cfg.bootSound === false; saveCfg(); openAllSettingsModal(true);
+       } },
+       { label: tr("theme_to_pc"), right: cfg.themeToPc ? "on" : "off", act: function () {
+-        cfg.themeToPc = !cfg.themeToPc; saveCfg(); openAllSettingsModal(true);
++        cfg.themeToPc = !cfg.themeToPc; saveCfg();
++        if (cfg.themeToPc) themeToPc(cfg.theme);
++        openAllSettingsModal(true);
+       } },
+       { label: tr("share_qr"), right: cfg.shareQr === "boot" ? "boot + Live" : cfg.shareQr === "off" ? "off" : "Live", act: function () {
+         var m = ["live", "boot", "off"];
+@@ -2376,6 +2416,7 @@
        if (window.tizen && window.tizen.application && window.tizen.ApplicationControl) {
          var ac = new window.tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", null, null, null,
            [new window.tizen.ApplicationControlData("PAYLOAD", ['{"values":"v=' + id + '"}'])]);
@@ -114,7 +238,7 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
          window.tizen.application.launchAppControl(ac, "111299001912", null, function () { window.tizen.application.launch("111299001912"); });
          return;
        }
-@@ -2806,6 +2811,7 @@
+@@ -2806,6 +2847,7 @@
          var tzId = app.tizenId || (window.OMARCHY_TIZEN_IDS || {})[app.id];
          if (!tzId) { showToast(app.name + " is not available on this TV"); return; }
          try {
@@ -122,7 +246,7 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
            window.tizen.application.launch(tzId, null, function (err) {
              showToast("Could not open " + app.name + ": " + ((err && (err.message || err.name)) || "launch failed"));
            });
-@@ -2833,6 +2839,37 @@
+@@ -2833,6 +2875,37 @@
      renderAll();
    }
  
@@ -160,7 +284,7 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
  
    // Grok Bot companion avatar, webOS/Tizen: Tom Ballard's shapes, palette and eyes (MIT, vendored from
    // his Agent Desktop v0.2.0, see vendor/grokbot/) drawn by companion.js. The motion follows
-@@ -2985,6 +3022,7 @@
+@@ -2985,6 +3058,7 @@
      try {
        if (lunaLaunch("com.webos.app.browser", { target: url })) return;
        if (window.tizen && window.tizen.ApplicationControl) {
@@ -168,7 +292,7 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
          window.tizen.application.launchAppControl(new window.tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", url), null, null, null);
          return;
        }
-@@ -2995,6 +3033,7 @@
+@@ -2995,6 +3069,7 @@
      try {
        if (lunaLaunch("com.webos.app.browser", { target: url })) return;
        if (window.tizen && window.tizen.ApplicationControl) {
@@ -176,7 +300,112 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
          window.tizen.application.launchAppControl(new window.tizen.ApplicationControl("http://tizen.org/appcontrol/operation/view", url), null, null, null);
          return;
        }
-@@ -3593,14 +3632,23 @@
+@@ -3020,6 +3095,43 @@
+       return gbPc;
+     }).catch(function () { return null; });
+   }
++  // Theme phrases from the companion ("change my theme to nord") apply here and on the PC.
++  function companionTheme(q) {
++    var parser = window.OmarchyTui;
++    if (!parser) return false;
++    var themes = Object.keys(DATA.themes || {});
++    var c = parser.parse(q, themes);
++    if (c.kind !== "theme" && c.kind !== "next-theme" && c.kind !== "themes" && c.kind !== "theme-unknown") return false;
++    var key = gbBotKey(), store = window.localStorage;
++    if (GBC) GBC.push(store, key, "user", q);
++    if (c.kind === "themes") {
++      var list = themes.join(" · ");
++      if (GBC) GBC.push(store, key, "bot", list);
++      gbSay(list.slice(0, 180), 12000);
++      return true;
++    }
++    if (c.kind === "theme-unknown") {
++      var miss = "No theme matches “" + c.query + "”";
++      if (GBC) GBC.push(store, key, "bot", miss, { mode: "error" });
++      gbSay(miss, 8000);
++      showToast(miss);
++      return true;
++    }
++    var n = c.kind === "theme" ? c.name : themes[(themes.indexOf(cfg.theme) + 1) % themes.length];
++    if (!n) return true;
++    cfg.theme = n;
++    cfg.randomTheme = false;
++    cfg.wallpaperIdx = 0;
++    cfg.wallpaper = "";
++    saveCfg();
++    applyTheme();
++    renderAll();
++    themeToPc(n);
++    if (GBC) GBC.push(store, key, "bot", "theme → " + n);
++    gbSay("theme → " + n, 8000);
++    closeModal();
++    return true;
++  }
+   function gbSay(text, ms) {
+     gbFace.bubble = String(text || "");
+     gbFace.bubbleUntil = Date.now() + (ms || 15000);
+@@ -3041,14 +3153,24 @@
+       }
+     }
+     var base = pcBase();
++    // A theme request stays on the TV and updates the PC. It never opens the browser.
++    if (companionTheme(q)) return;
+     // v2.13.8 "Grok Bot diretto": no PC companion paired, a webhook routine set → the TV asks Grok Bot itself.
+     if (gbAgent() === "grokbot" && (!base || !cfg.grokbotCode) && GBD && GBD.enabled(GBD.load(store))) { askDirect(q, reopen); return; }
+-    if (gbAgent() !== "grokbot" || !base || !cfg.grokbotCode || typeof fetch !== "function") {
+-      if (gbAgent() === "grokbot") showToast(!base ? "Pair the PC (Workspace 4) to ask Grok Bot · opening grok.com" : "Enter the PC ask code in the companion settings · opening grok.com");
++    // Grok on grok.com is the explicit browser choice. The default agent has no companion on this PC,
++    // so other questions stay here instead of launching the Internet app.
++    if (gbAgent() !== "grokbot") {
+       if (GBC) GBC.push(store, key, "user", q);
+       closeModal(); askGrokWeb(q);
+       return;
+     }
++    if (!base || !cfg.grokbotCode || typeof fetch !== "function") {
++      showToast("This PC has no Grok companion");
++      if (GBC) GBC.push(store, key, "user", q);
++      if (GBC) GBC.push(store, key, "bot", "This PC has no Grok companion. A theme still changes here and on the PC: say “theme nord”.", { mode: "error" });
++      gbSay("This PC has no Grok companion", 8000);
++      return;
++    }
+     if (GBC) GBC.push(store, key, "user", q);
+     gbFace.busy = true; gbSay("Thinking…", 200000);
+     if (reopen) openCompanionChat(false);
+@@ -3149,8 +3271,9 @@
+   }
+   // ---- "Grok Bot · Omarchy TUI" (port of Android's AskActivity): local TV commands, then the agent ----
+   // Parsing lives in tui.js (node-tested). Local commands: themes, wallpaper, screensaver, apps, status, web apps.
+-  // Questions go to the PC bridge (POST /v1/grokbot/ask with the ask code); no PC or PC off → Grok Bot diretto
+-  // when it's on; otherwise grok.com in the TV browser. Replies type out in the box. Back closes the window.
++  // A theme command changes the TV and the PC and does not open a browser. Other questions go to the PC
++  // bridge when a Grok companion is paired; otherwise they stay on the TV. Grok Web is the choice that
++  // opens grok.com. Replies type out in the box. Back closes the window.
+   var TUI = window.OmarchyTui || null;
+   // TUI agents, like Android's Ask: Grok Bot (companion bridge), every AI agent signed in on the PC
+   // (omarchy-link's assistant: Claude, Codex, Grok, Grok Bot, Hermes, Gemini, ollama, APIs) via
+@@ -3235,7 +3358,7 @@
+     else if (c.kind === "themes") tuiAdd("dim", themes.join(" · "));
+     else if (c.kind === "next-theme" || c.kind === "theme") {
+       var n = c.kind === "theme" ? c.name : themes[(themes.indexOf(cfg.theme) + 1) % themes.length];
+-      cfg.theme = n; cfg.randomTheme = false; cfg.wallpaperIdx = 0; saveCfg(); applyTheme(); renderAll(); tuiAdd("ok", "theme → " + n);
++      cfg.theme = n; cfg.randomTheme = false; cfg.wallpaperIdx = 0; saveCfg(); applyTheme(); renderAll(); themeToPc(n); tuiAdd("ok", "theme → " + n);
+     } else if (c.kind === "theme-unknown") tuiAdd("err", "no single theme matches “" + c.query + "” · try “themes”");
+     else if (c.kind === "wallpaper") { cfg.wallpaperIdx = (cfg.wallpaperIdx || 0) + 1; cfg.wallpaper = ""; saveCfg(); applyTheme(); tuiAdd("ok", "next wallpaper"); }
+     else if (c.kind === "saver") {
+@@ -3288,9 +3411,9 @@
+     if (ta.id === "grok-web") { tuiOpenUrl("https://grok.com/?q=" + encodeURIComponent(q), "grok.com"); return; }
+     if (ta.id.indexOf("pc:") === 0 && base && cfg.grokbotCode && typeof fetch === "function") { tuiAskPc(q, ta.id.slice(3)); return; }
+     if (!base || !cfg.grokbotCode || typeof fetch !== "function") {
+-      if (direct) { tuiDirect(q); return; }
+-      tuiAdd("err", !base ? "no PC paired and Grok Bot diretto is off · opening grok.com" : "no PC ask code (companion settings) · opening grok.com");
+-      askGrokWeb(q); return;
++      if (direct && ta.id === "grokbot") { tuiDirect(q); return; }
++      tuiAdd("err", "This PC has no Grok companion. A theme still changes here and on the PC: theme <name>.");
++      return;
+     }
+     var bot = gbBot();
+     tuiBusy = true; tuiAdd("dim", "asking " + gbName() + " on the PC…");
+@@ -3593,14 +3716,23 @@
      if (state.modalOpen) renderModalList();
    }
  
@@ -203,7 +432,7 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
    }
  
    // Home widgets that can take focus, in on-screen order (state.widgetIdx: 0 terminal, 1 weather,
-@@ -3622,6 +3670,21 @@
+@@ -3622,6 +3754,21 @@
    // Keyboard / LG Remote Navigation
    var LEGACY_KEYS = { 8: "Backspace", 13: "Enter", 27: "Escape", 37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight", 40: "ArrowDown" };
    window.addEventListener("keydown", function (e) {
@@ -225,7 +454,7 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
      var ov = document.getElementById("saver-overlay");
      if (ov.className === "active") {
        stopScreensaver();
-@@ -3629,10 +3692,8 @@
+@@ -3629,10 +3776,8 @@
        return;
      }
  
@@ -238,7 +467,7 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
  
      // A long press opened a menu while OK is still held: drop its auto-repeat so it can't pick an item.
      if (state.okHeld && k === "Enter") { e.preventDefault(); return; }
-@@ -3690,7 +3751,7 @@
+@@ -3690,7 +3835,7 @@
      }
  
      if (state.zone === "bar") {
@@ -247,9 +476,64 @@ diff -ruN omarchy-a/app.js omarchy-b/app.js
        if (k === "ArrowLeft") { state.barIdx = Math.max(0, state.barIdx - 1); renderAll(); e.preventDefault(); return; }
        if (k === "ArrowDown") {
          if (state.ws === 0) state.zone = enterWidgets() ? "widgets" : "dock";
+@@ -3896,7 +4041,7 @@
+     openAboutModal: openAboutModal,
+     startScreensaver: startScreensaver,
+     stopScreensaver: stopScreensaver,
+-    setTheme: function (t) { cfg.theme = t; cfg.wallpaperIdx = 0; saveCfg(); applyTheme(); renderAll(); },
++    setTheme: function (t) { cfg.theme = t; cfg.wallpaperIdx = 0; saveCfg(); applyTheme(); renderAll(); themeToPc(t); },
+     setTempUnit: function (u) { cfg.tempUnit = u; saveCfg(); renderAll(); },
+     setLang: function (l) { cfg.lang = l; saveCfg(); renderAll(); },
+     setSimulatedPc: function (v) { cfg.pcSimulated = v; saveCfg(); pollPcStatus(); renderAll(); },
+diff -ruN omarchy-a/tui.js omarchy-b/tui.js
+--- a/tui.js
++++ b/tui.js
+@@ -19,6 +19,16 @@
+   function norm(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
+ 
+   // Theme by name: exact, then normalised ("tokyo roadster" = "tokyo-roadster"), then a unique prefix/substring.
++  function themePhrase(low) {
++    var m = /^(?:please\s+)?(?:set theme|theme|imposta tema|usa tema|tema)\s+(.+)$/.exec(low);
++    if (!m) {
++      m = /^(?:please\s+)?(?:change|set|switch|use|imposta|cambia|usa)\s+(?:my\s+|the\s+|il\s+|lo\s+)?(?:pc\s+|computer\s+)?(?:theme|tema)(?:\s+on\s+(?:my\s+)?(?:pc|computer|tv))?\s+(.+)$/.exec(low);
++    }
++    if (!m) return null;
++    var name = m[1].replace(/^(?:to|into|in|a|al)\s+/, "").trim();
++    return name || null;
++  }
++
+   function matchTheme(q, themes) {
+     var n = norm(q), i, hits = [];
+     if (!n) return null;
+@@ -57,10 +67,12 @@
+       if (WEB[t]) return { kind: "web", target: WEB[t], url: WEB_URLS[WEB[t]] };
+       return { kind: "open", target: raw.slice(raw.length - t.length).trim() };
+     }
+-    m = /^(set theme|theme|imposta tema|usa tema|tema) (.+)$/.exec(low);
+-    if (m) {
+-      var th = matchTheme(m[2], themes);
+-      return th ? { kind: "theme", name: th } : { kind: "theme-unknown", query: m[2] };
++    // "theme nord", "set theme to nord", "change my theme to nord",
++    // "change the theme on my computer to tokyo night".
++    var phrase = themePhrase(low);
++    if (phrase) {
++      var th = matchTheme(phrase, themes);
++      return th ? { kind: "theme", name: th } : { kind: "theme-unknown", query: phrase };
+     }
+     var direct = matchTheme(low, themes);   // a bare theme name switches to it, like on Android
+     if (direct && norm(low).length >= 4 && norm(direct) === norm(low)) return { kind: "theme", name: direct };
+@@ -68,7 +80,7 @@
+   }
+ 
+   var HELP = [
+-    "themes · theme <name> · next theme",
++    "themes · theme <name> · change my theme to <name> · next theme",
+     "wallpaper · screensaver [aquarium|classic|logo|cinemarchy|slow|normal|fast] · speed slow|normal|fast",
+     "agents · agent <name>  (Grok Bot, Claude, Codex, Grok, Hermes, Gemini, ollama… from your PC)",
+     "apps · open <app> · status · clear",
 diff -ruN omarchy-a/config.xml omarchy-b/config.xml
---- a/config.xml	2026-11-08 11:37:31.673778797 -0500
-+++ b/config.xml	2026-11-08 11:37:31.674967387 -0500
+--- a/config.xml
++++ b/config.xml
 @@ -2,6 +2,15 @@
  <widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
          id="http://marcoporro.it/omarchytv" version="2.14.0" viewmodes="maximized">
@@ -276,8 +560,8 @@ diff -ruN omarchy-a/config.xml omarchy-b/config.xml
      <tizen:profile name="tv-samsung"/>
  </widget>
 diff -ruN omarchy-a/index.html omarchy-b/index.html
---- a/index.html	2026-11-08 11:37:31.676516446 -0500
-+++ b/index.html	2026-11-08 11:37:31.677596562 -0500
+--- a/index.html
++++ b/index.html
 @@ -888,8 +888,21 @@
            <circle cx="18.5" cy="14.5" r="1.1"/>
          </svg>
@@ -336,8 +620,8 @@ diff -ruN omarchy-a/index.html omarchy-b/index.html
            <rect x="2" y="3" width="20" height="14"/>
            <line x1="8" y1="21" x2="16" y2="21"/>
 diff -ruN omarchy-a/tizen-shim.js omarchy-b/tizen-shim.js
---- a/tizen-shim.js	2026-11-08 11:37:31.679470984 -0500
-+++ b/tizen-shim.js	2026-11-08 11:37:31.680272695 -0500
+--- a/tizen-shim.js
++++ b/tizen-shim.js
 @@ -4,30 +4,6 @@
    if (!window.tizen) return;
    window.OMARCHY_PLATFORM = "tizen";
@@ -443,3 +727,143 @@ diff -ruN omarchy-a/tizen-shim.js omarchy-b/tizen-shim.js
  })();
  
  // Window title says Tizen instead of the shared webOS title.
+diff -ruN omarchy-a/boot.js omarchy-b/boot.js
+--- a/boot.js
++++ b/boot.js
+@@ -164,6 +164,15 @@
+ 
+   function crt(ms) { return Math.max(0, Math.min(1, ms / CRT_MS)); }
+ 
++  // The boot clock follows time the panel can actually show. A hidden tick does
++  // not move it. A stalled timer (the TV froze the page) must not skip ahead.
++  function advanceVisible(accum, delta, hidden) {
++    if (hidden) return accum;
++    if (!(delta > 0)) return accum;
++    if (delta > 100) delta = 33;
++    return accum + delta;
++  }
++
+   /** True during the dark half of the flicker right after a "clear". */
+   /**
+    * v2.14 boot sound: the cues between two clock times (from exclusive, to inclusive; from < 0 = the start).
+@@ -343,9 +352,21 @@
+     }
+     document.body.appendChild(el);
+ 
+-    var start = Date.now(), finished = false, fading = false, timer = null;
++    var finished = false, fading = false, timer = null, fadeMark = 0, lastTick = Date.now();
++    var visibleAccum = 0, lastMs = -1, resetPending = !!document.hidden;
+     playing = el;
+ 
++    function resetRun() {
++      visibleAccum = 0;
++      lastMs = -1;
++      fading = false;
++      fadeMark = 0;
++      resetPending = false;
++      el.style.opacity = "1";
++      script.held = 0;
++      script.waitStart = -1;
++      for (var i = 0; i < script.lines.length; i++) script.lines[i].result = null;
++    }
+     function finish() {
+       if (finished) return;
+       finished = true;
+@@ -358,23 +379,38 @@
+       if (done) done();
+     }
+     function fade() {
+-      if (fading) return;
++      if (fading || finished) return;
+       fading = true;
++      fadeMark = visibleAccum;
+       el.style.opacity = "0";
+-      setTimeout(finish, FADE_MS + 30);
++      setTimeout(finish, FADE_MS + 80);   // backup if the interval is frozen after the fade starts
+     }
+     function onKey(e) {
++      if (finished) return;
+       e.preventDefault();
+       e.stopPropagation();
+       if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+-      if (e.type === "keydown") fade();
++      if (e.type !== "keydown") return;
++      // The power key arrives as the panel comes on. Ignore it until the tube
++      // has opened, and a second key removes an overlay whose fade got stuck.
++      if (fading) { finish(); return; }
++      if (document.hidden || visibleAccum < CRT_MS) return;
++      fade();
+     }
+     window.addEventListener("keydown", onKey, true);
+     window.addEventListener("keyup", onKey, true);
+ 
+-    var sound = o.sound !== false && root.OmarchyBootSound ? root.OmarchyBootSound.create() : null, lastMs = -1;
++    var sound = o.sound !== false && root.OmarchyBootSound ? root.OmarchyBootSound.create() : null;
+     function tick() {
+-      var real = Date.now() - start, ms = clock(script, real);   // held while network / omarchy-link really wait
++      var now = Date.now(), delta = now - lastTick;
++      lastTick = now;
++      if (document.hidden) {
++        if (visibleAccum < CRT_MS) resetPending = true;
++        return;
++      }
++      if (resetPending) resetRun();
++      visibleAccum = advanceVisible(visibleAccum, delta, false);
++      var real = visibleAccum, ms = clock(script, real);   // held while network / omarchy-link really wait
+       if (sound && !fading) { var cs = cues(script, lastMs, ms); for (var ci = 0; ci < cs.length; ci++) sound.cue(cs[ci]); }
+       lastMs = ms;
+       if (ms < CRT_MS) {   // power-on: a bright line grows across, then opens vertically
+@@ -397,34 +433,47 @@
+         if (!fading) text.innerHTML = flickering(script, ms) ? "" : renderText(script, ms, real, t, fx);
+       }
+       if (qrEl) qrEl.style.opacity = ms >= script.fadeAt - HOLD_MS && !fading ? "0.9" : "0";
+-      if (ms >= script.fadeAt + qrHold) fade();
++      if (!fading && ms >= script.fadeAt + qrHold) fade();
++      if (fading && visibleAccum - fadeMark >= FADE_MS) finish();
+     }
+     tick();
+     timer = setInterval(tick, 33);   // setInterval, not rAF: some Tizen 2.x/webOS 3 engines throttle rAF at start
+   }
+ 
+   /**
+-   * Wires the boot screen into the app: plays at start, and with mode "wake" when the app comes back after at
+-   * least a minute hidden (TV standby, another app). getOpts() is called each time, so theme changes apply.
++   * Wires the boot screen into the app. The first play waits until the page is visible, because a power-on
++   * can load it under the TV logo. Mode "wake" also plays when the app returns after at least a minute hidden.
++   * getOpts() is called each time, so theme changes apply.
+    */
+   function install(getOpts) {
+     if (typeof document === "undefined") return;
+-    var hiddenAt = 0;
++    var hiddenAt = 0, sawStart = false;
+     function maybe(reason) {
+       var o = getOpts();
+       if (shouldPlay(o.mode, reason)) play(o);
+     }
+     document.addEventListener("visibilitychange", function () {
+       if (document.hidden) { hiddenAt = Date.now(); return; }
++      // Power-on loads this page under the TV logo. Wait until it is shown
++      // before starting, or the script expires in the background.
++      if (!sawStart) {
++        sawStart = true;
++        hiddenAt = 0;
++        maybe("start");
++        return;
++      }
+       if (hiddenAt && Date.now() - hiddenAt >= 60000) maybe("wake");
+       hiddenAt = 0;
+     });
+-    maybe("start");
++    if (!document.hidden) {
++      sawStart = true;
++      maybe("start");
++    }
+   }
+ 
+   var api = { build: build, clock: clock, doneText: doneText, doneOk: doneOk, visibleAt: visibleAt, typedChars: typedChars, memText: memText, spinning: spinning,
+               spinner: spinner, flickering: flickering, cues: cues, crt: crt, blockRows: blockRows, splitColumn: splitColumn,
+-              shouldPlay: shouldPlay, play: play, install: install, COLUMNS: COLUMNS, MAX_WAIT_MS: MAX_WAIT_MS };
++              shouldPlay: shouldPlay, advanceVisible: advanceVisible, play: play, install: install, COLUMNS: COLUMNS, MAX_WAIT_MS: MAX_WAIT_MS };
+   root.OmarchyBoot = api;
+   if (typeof module !== "undefined" && module.exports) module.exports = api;
+ })(typeof window !== "undefined" ? window : this);

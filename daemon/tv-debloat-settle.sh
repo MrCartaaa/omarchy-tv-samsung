@@ -38,8 +38,13 @@ LOG_FILE=$STATE_DIR/settle.log
 mkdir -p "$STATE_DIR"
 chmod 700 "$STATE_DIR"
 
+# Print from this process. Piping each line into tee makes a short-lived
+# process per line, and a journal often keeps only the last of those.
 record() {
-  printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$1" | tee -a "$LOG_FILE"
+  local stamped
+  stamped="$(date -u '+%Y-%m-%dT%H:%M:%SZ') ${1}"
+  printf '%s\n' "$stamped" >>"$LOG_FILE"
+  printf '%s\n' "$stamped"
 }
 
 if [[ ! -f $REPO/scripts/tv_debloat.py || ! -f $SDB_BIN ]]; then
@@ -62,6 +67,8 @@ report=$(python3 "$REPO/scripts/tv_debloat.py" settle \
 rc=$?
 set -e
 
+# The last line is the result, with the disable counts first.
+# already + newly equals required when nothing is still listed.
 if [[ -n ${report// } ]]; then
   while IFS= read -r line; do
     record "$line"
